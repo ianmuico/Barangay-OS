@@ -78,17 +78,34 @@ export function ReportGenerateDialog({ open, onClose, resident }: ReportGenerate
     const groups: TemplateInputGroup[] = [];
     const fieldCount: Record<string, number> = {};
 
-    for (const id of Array.from(selectedIds)) {
-      const fields = await api.getInputFields(id);
-      const tpl = templates.find(t => t.id === id);
-      groups.push({
-        templateId: id,
-        templateName: tpl?.name || `Template ${id}`,
-        fields,
-      });
-      for (const f of fields) {
-        fieldCount[f] = (fieldCount[f] || 0) + 1;
+    try {
+      for (const id of Array.from(selectedIds)) {
+        let fields: string[] = [];
+        try {
+          fields = await api.getInputFields(id);
+        } catch {
+          // If getInputFields fails, fall back to parsing template content directly
+          const tpl = templates.find(t => t.id === id);
+          if (tpl) {
+            const regex = /\{\{input:(\w+)\}\}/g;
+            let match;
+            while ((match = regex.exec(tpl.content_html)) !== null) {
+              if (!fields.includes(match[1])) fields.push(match[1]);
+            }
+          }
+        }
+        const tpl = templates.find(t => t.id === id);
+        groups.push({
+          templateId: id,
+          templateName: tpl?.name || `Template ${id}`,
+          fields,
+        });
+        for (const f of fields) {
+          fieldCount[f] = (fieldCount[f] || 0) + 1;
+        }
       }
+    } catch (err) {
+      console.error('Failed to get input fields:', err);
     }
 
     // Fields used in 2+ templates are "shared"

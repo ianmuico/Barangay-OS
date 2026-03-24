@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { Plus, Pencil, Trash2, FileText, Printer, Upload, Download } from 'lucide-react';
 import { DataTable } from '@/components/data-table';
@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { getAPI, type Resident, type PaginatedResult } from '@/lib/ipc';
-import { cachedFetch, invalidateCache } from '@/lib/cache';
+import { invalidateCache } from '@/lib/cache';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/empty-state';
 import { CSVImportDialog } from '@/components/csv-import-dialog';
@@ -33,8 +33,15 @@ export default function ResidentsPage() {
   const { t } = useTranslation();
   const [result, setResult] = useState<PaginatedResult<Resident> | null>(null);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const [loaded, setLoaded] = useState(false);
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [formOpen, setFormOpen] = useState(false);
   const [editResident, setEditResident] = useState<Resident | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -47,12 +54,10 @@ export default function ResidentsPage() {
   const fetchResidents = useCallback(async () => {
     const api = getAPI();
     if (!api) return;
-    const data = await cachedFetch(`residents:${search}:${page}`, () =>
-      api.getResidents({ search, page, limit: 50 })
-    );
+    const data = await api.getResidents({ search: debouncedSearch, page, limit: 50 });
     setResult(data);
     setLoaded(true);
-  }, [search, page]);
+  }, [debouncedSearch, page]);
 
   useEffect(() => {
     fetchResidents();
@@ -60,7 +65,7 @@ export default function ResidentsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [debouncedSearch]);
 
   const handleSave = async (data: any) => {
     const api = getAPI();
