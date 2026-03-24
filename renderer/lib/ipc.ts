@@ -1,0 +1,222 @@
+// Type definitions for the Electron IPC bridge
+
+export interface User {
+  id: number;
+  username: string;
+  role: 'admin' | 'staff';
+  full_name: string | null;
+  avatar_path: string | null;
+  preferences_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Resident {
+  id: number;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  suffix: string | null;
+  birth_date: string;
+  gender: string;
+  civil_status: string;
+  address: string;
+  purok: string | null;
+  contact_number: string | null;
+  email: string | null;
+  occupation: string | null;
+  is_indigent: number;
+  voter_status: string;
+  blood_type: string | null;
+  photo_path: string | null;
+  household_id: number | null;
+  partner_id: number | null;
+  mother_id: number | null;
+  father_id: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  age?: number;
+}
+
+export interface Household {
+  id: number;
+  household_number: string | null;
+  address: string;
+  created_at: string;
+}
+
+export interface ReportTemplate {
+  id: number;
+  name: string;
+  content_html: string;
+  variables_json: string;
+  watermark_path: string | null;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Official {
+  id: number;
+  resident_id: number | null;
+  position: string;
+  start_date: string | null;
+  end_date: string | null;
+  is_active: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  first_name?: string;
+  last_name?: string;
+  middle_name?: string;
+  suffix?: string;
+  photo_path?: string;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface DashboardStats {
+  totalResidents: number;
+  totalSeniors: number;
+  totalIndigents: number;
+  totalYouth: number;
+}
+
+export interface DetailedStats {
+  genderDistribution: { gender: string; count: number }[];
+  ageDistribution: { bracket: string; count: number }[];
+  seniorAgeBrackets: { bracket: string; count: number }[];
+  indigentsByPurok: { purok: string; count: number }[];
+  youthByAge: { category: string; count: number }[];
+  youthByOccupation: { category: string; count: number }[];
+  residentsByPurok: { purok: string; count: number }[];
+}
+
+export interface AuditEntry {
+  id: number;
+  user_id: number | null;
+  action: string;
+  details: string | null;
+  created_at: string;
+  username?: string;
+}
+
+export interface ServerStatus {
+  running: boolean;
+  address?: string;
+  port?: number;
+  url?: string;
+}
+
+export interface TreeResident {
+  id: number;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  suffix: string | null;
+  gender: string;
+  partner_id: number | null;
+  mother_id: number | null;
+  father_id: number | null;
+  purok: string | null;
+  age: number;
+}
+
+export interface ElectronAPI {
+  login: (username: string, password: string) => Promise<{ success: boolean; user?: User; error?: string }>;
+  logout: () => Promise<{ success: boolean }>;
+  getCurrentUser: () => Promise<User | null>;
+
+  getResidents: (params: any) => Promise<PaginatedResult<Resident>>;
+  getResident: (id: number) => Promise<Resident | null>;
+  searchResidents: (query: string, limit?: number) => Promise<Resident[]>;
+  createResident: (data: any) => Promise<number>;
+  updateResident: (id: number, data: any) => Promise<{ success: boolean }>;
+  deleteResident: (id: number) => Promise<{ success: boolean }>;
+  linkPartner: (residentId: number, partnerId: number) => Promise<{ success: boolean }>;
+  unlinkPartner: (residentId: number) => Promise<{ success: boolean }>;
+  getChildrenOf: (residentId: number) => Promise<Resident[]>;
+  addChildLink: (parentId: number, parentGender: string, childId: number) => Promise<{ success: boolean }>;
+  removeChildLink: (parentId: number, parentGender: string, childId: number) => Promise<{ success: boolean }>;
+  getResidentsForTree: () => Promise<TreeResident[]>;
+  getPartnerRelationships: () => Promise<any[]>;
+
+  getHouseholds: (params?: any) => Promise<Household[]>;
+  createHousehold: (data: any) => Promise<number>;
+  updateHousehold: (id: number, data: any) => Promise<{ success: boolean }>;
+  deleteHousehold: (id: number) => Promise<{ success: boolean }>;
+
+  getTemplates: () => Promise<ReportTemplate[]>;
+  getTemplate: (id: number) => Promise<ReportTemplate | null>;
+  createTemplate: (data: any) => Promise<number>;
+  updateTemplate: (id: number, data: any) => Promise<{ success: boolean }>;
+  deleteTemplate: (id: number) => Promise<{ success: boolean }>;
+
+  generateReport: (templateId: number, residentId: number) => Promise<{ success: boolean; html?: string; reportId?: number; error?: string }>;
+  exportPDF: (html: string, filename: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+  printReport: (html: string) => Promise<{ success: boolean; error?: string }>;
+  generateMultiReport: (templateIds: number[], residentId: number) => Promise<{ success: boolean; reports?: { templateName: string; html: string }[]; error?: string }>;
+  exportMultiPDF: (htmlPages: string[], filename: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+  printList: (options: { headerHtml: string; rows: any[]; columns: { key: string; label: string }[]; title: string; mode?: 'download' | 'print' }) => Promise<{ success: boolean; path?: string; error?: string }>;
+  printGroupedList: (options: { headerHtml: string; groups: { groupLabel: string; rows: any[] }[]; columns: { key: string; label: string }[]; title: string; groupByLabel: string; mode?: 'download' | 'print' }) => Promise<{ success: boolean; path?: string; error?: string }>;
+  getGeneratedReports: (residentId?: number) => Promise<any[]>;
+
+  getOfficials: () => Promise<Official[]>;
+  getOfficial: (id: number) => Promise<Official | null>;
+  createOfficial: (data: any) => Promise<number>;
+  updateOfficial: (id: number, data: any) => Promise<{ success: boolean }>;
+  deleteOfficial: (id: number) => Promise<{ success: boolean }>;
+
+  getUsers: () => Promise<User[]>;
+  createUser: (data: any) => Promise<number>;
+  updateUser: (id: number, data: any) => Promise<{ success: boolean }>;
+  deleteUser: (id: number) => Promise<{ success: boolean }>;
+  updatePassword: (id: number, oldPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (id: number, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+
+  getSetting: (key: string) => Promise<string | undefined>;
+  setSetting: (key: string, value: string) => Promise<{ success: boolean }>;
+  getAllSettings: () => Promise<Record<string, string>>;
+
+  getDashboardStats: () => Promise<DashboardStats>;
+  getDetailedStats: () => Promise<DetailedStats>;
+  getAuditLog: (limit: number) => Promise<AuditEntry[]>;
+
+  wipeDatabase: (pin: string) => Promise<{ success: boolean; error?: string }>;
+  fillTestData: (pin: string) => Promise<{ success: boolean; error?: string }>;
+
+  backupDatabase: () => Promise<{ success: boolean; path?: string; error?: string }>;
+  restoreDatabase: () => Promise<{ success: boolean; error?: string }>;
+
+  startServer: (port: number) => Promise<{ success: boolean; address?: string; port?: number; url?: string; error?: string }>;
+  stopServer: () => Promise<{ success: boolean; error?: string }>;
+  getServerStatus: () => Promise<ServerStatus>;
+
+  selectFile: (options: any) => Promise<any>;
+  saveFile: (options: any) => Promise<any>;
+  saveAvatar: (userId: number, filePath: string) => Promise<string>;
+  saveResidentPhoto: (residentId: number, filePath: string) => Promise<string>;
+  saveLogo: (sourcePath: string) => Promise<string>;
+  removeLogo: () => Promise<boolean>;
+  getLogoBase64: () => Promise<string | null>;
+}
+
+declare global {
+  interface Window {
+    electronAPI: ElectronAPI;
+  }
+}
+
+export function getAPI(): ElectronAPI | null {
+  if (typeof window !== 'undefined' && window.electronAPI) {
+    return window.electronAPI;
+  }
+  return null;
+}

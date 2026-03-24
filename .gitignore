@@ -1,0 +1,9 @@
+node_modules/
+main/dist/
+renderer/.next/
+renderer/out/
+dist/
+*.db
+*.db-wal
+*.db-shm
+.DS_Store

@@ -1,0 +1,145 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Upload, X, ImageIcon } from 'lucide-react';
+import { PageHeader } from '@/components/page-header';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { getAPI } from '@/lib/ipc';
+import { toast } from 'sonner';
+
+export default function BarangaySettingsPage() {
+  const [settings, setSettings] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoLoading, setLogoLoading] = useState(false);
+
+  useEffect(() => {
+    const api = getAPI();
+    if (!api) return;
+    api.getAllSettings().then(setSettings);
+    api.getLogoBase64().then(setLogoPreview);
+  }, []);
+
+  const handleSave = async () => {
+    const api = getAPI();
+    if (!api) return;
+    setSaving(true);
+    try {
+      for (const [key, value] of Object.entries(settings)) {
+        await api.setSetting(key, value);
+      }
+      toast.success('Settings saved');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const update = (key: string, value: string) => {
+    setSettings((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleUploadLogo = async () => {
+    const api = getAPI();
+    if (!api) return;
+    setLogoLoading(true);
+    try {
+      const result = await api.selectFile({
+        properties: ['openFile'],
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+      });
+      if (result.canceled || !result.filePaths?.length) return;
+      await api.saveLogo(result.filePaths[0]);
+      const base64 = await api.getLogoBase64();
+      setLogoPreview(base64);
+      toast.success('Logo uploaded');
+    } finally {
+      setLogoLoading(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    const api = getAPI();
+    if (!api) return;
+    await api.removeLogo();
+    setLogoPreview(null);
+    toast.success('Logo removed');
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Barangay Information" description="Configure your barangay details used in reports and documents." />
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Logo Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Barangay Logo</CardTitle>
+            <CardDescription>Used as watermark in generated reports. PNG recommended with transparent background.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center gap-4">
+            <div className="w-40 h-40 rounded-xl border-2 border-dashed flex items-center justify-center bg-muted/30 overflow-hidden">
+              {logoPreview ? (
+                <img src={logoPreview} alt="Barangay Logo" className="w-full h-full object-contain p-2" />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                  <ImageIcon className="h-10 w-10" />
+                  <span className="text-xs">No logo set</span>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleUploadLogo} disabled={logoLoading}>
+                <Upload className="mr-2 h-3.5 w-3.5" />
+                {logoPreview ? 'Change' : 'Upload'}
+              </Button>
+              {logoPreview && (
+                <Button variant="outline" size="sm" onClick={handleRemoveLogo}>
+                  <X className="mr-2 h-3.5 w-3.5" />
+                  Remove
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* General Info Card */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">General Information</CardTitle>
+            <CardDescription>These details appear in generated reports and certificates.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Barangay Name</Label>
+                <Input value={settings.barangay_name || ''} onChange={(e) => update('barangay_name', e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Number of Puroks</Label>
+                <Input type="number" value={settings.number_of_puroks || '7'} onChange={(e) => update('number_of_puroks', e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Barangay Address</Label>
+                <Input value={settings.barangay_address || ''} onChange={(e) => update('barangay_address', e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Municipality / City</Label>
+                <Input value={settings.municipality || ''} onChange={(e) => update('municipality', e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Province</Label>
+                <Input value={settings.province || ''} onChange={(e) => update('province', e.target.value)} />
+              </div>
+            </div>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? 'Saving...' : 'Save Settings'}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
