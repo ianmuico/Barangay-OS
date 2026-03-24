@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { Users, UserCheck, HeartHandshake, Baby, TrendingUp } from 'lucide-react';
+import { Users, UserCheck, HeartHandshake, Baby, TrendingUp, FileText } from 'lucide-react';
+import { SummaryReportDialog } from '@/components/summary-report-dialog';
 import { PageHeader } from '@/components/page-header';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { DashboardSkeleton } from '@/components/skeletons';
 import { getAPI, type DashboardStats, type DetailedStats, type AuditEntry } from '@/lib/ipc';
@@ -92,6 +94,7 @@ export default function DashboardPage() {
   const [barangayName, setBarangayName] = useState('');
   const [chartView, setChartView] = useState<ChartView>('overview');
   const [subFilter, setSubFilter] = useState<SubFilter>('age');
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   useEffect(() => {
     const api = getAPI();
@@ -224,7 +227,13 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Dashboard" description={`${barangayName} Management System overview and analytics`} />
+      <div className="flex items-center justify-between">
+        <PageHeader title="Dashboard" description={`${barangayName} Management System overview and analytics`} />
+        <Button variant="outline" onClick={() => setSummaryOpen(true)}>
+          <FileText className="mr-2 h-4 w-4" />
+          Summary Report
+        </Button>
+      </div>
 
       {/* Stat Cards — clickable to switch chart view */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -486,6 +495,8 @@ export default function DashboardPage() {
           </Card>
         </div>
       )}
+
+      <SummaryReportDialog open={summaryOpen} onClose={() => setSummaryOpen(false)} />
     </div>
   );
 }

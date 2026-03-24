@@ -104,6 +104,18 @@ interface FileDialogOptions {
   properties?: string[];
 }
 
+// Keyboard shortcut listener
+contextBridge.exposeInMainWorld('onShortcut', {
+  onGenerateReport: (callback: () => void) => {
+    ipcRenderer.on('shortcut:generate-report', callback);
+    return () => ipcRenderer.removeListener('shortcut:generate-report', callback);
+  },
+  onPrint: (callback: () => void) => {
+    ipcRenderer.on('shortcut:print', callback);
+    return () => ipcRenderer.removeListener('shortcut:print', callback);
+  },
+});
+
 contextBridge.exposeInMainWorld('electronAPI', {
   // Auth
   login: (username: string, password: string) =>
@@ -228,6 +240,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     status?: string;
   }) => ipcRenderer.invoke('db:export:residents', params),
   listImportBatches: () => ipcRenderer.invoke('db:import:listBatches'),
+
+  // Analytics
+  trackEvent: (eventType: string, eventData?: string) => ipcRenderer.invoke('db:analytics:track', eventType, eventData),
+  getAnalyticsSummary: () => ipcRenderer.invoke('db:analytics:summary'),
+  exportAnalytics: () => ipcRenderer.invoke('db:analytics:export'),
 
   // Error Log Export
   exportLogFile: () => ipcRenderer.invoke('db:logs:export'),

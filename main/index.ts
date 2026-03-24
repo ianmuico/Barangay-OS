@@ -1,4 +1,4 @@
-import { app, BrowserWindow, protocol, net, dialog, session } from 'electron';
+import { app, BrowserWindow, protocol, net, dialog, session, globalShortcut } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { initDatabase, closeDatabase } from './database/connection';
@@ -8,6 +8,8 @@ import { registerBackupHandlers } from './ipc/backup';
 import { registerReportHandlers } from './ipc/reports';
 import { registerServerHandlers } from './ipc/server';
 import { initLogger } from './utils/logger';
+import { trackEvent } from './database/queries/analytics';
+import { initAutoUpdater } from './utils/updater';
 import { pathToFileURL } from 'url';
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -18,6 +20,7 @@ if (isDev) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let splashWindow: BrowserWindow | null = null;
 
 function getOutDir(): string {
   return path.join(__dirname, '../../renderer/out');
@@ -78,6 +81,61 @@ function resolveFilePath(urlPath: string): string {
   return path.join(outDir, 'index.html');
 }
 
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 400,
+    height: 300,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  const splashHtml = `<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    height: 100vh; background: transparent;
+    -webkit-app-region: drag;
+  }
+  .splash {
+    background: #18181b; color: white; border-radius: 20px;
+    padding: 48px 40px; text-align: center; width: 380px;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+    animation: fadeIn 0.5s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+  .logo { width: 64px; height: 64px; margin: 0 auto 16px; }
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; letter-spacing: -0.3px; }
+  .subtitle { font-size: 12px; color: #a1a1aa; margin-bottom: 24px; }
+  .loader { width: 32px; height: 3px; background: #27272a; border-radius: 2px; margin: 0 auto; overflow: hidden; }
+  .loader-bar { width: 50%; height: 100%; background: #8b5cf6; border-radius: 2px; animation: slide 1.2s ease-in-out infinite; }
+  @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }
+  .version { font-size: 10px; color: #52525b; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="splash">
+  <h1>Barangay Management System</h1>
+  <p class="subtitle">Loading your workspace...</p>
+  <div class="loader"><div class="loader-bar"></div></div>
+  <p class="version">v1.3</p>
+</div>
+</body>
+</html>`;
+
+  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashHtml)}`);
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -114,7 +172,23 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
+    // Close splash with a brief delay for smooth transition
+    setTimeout(() => {
+      if (splashWindow) {
+        splashWindow.close();
+        splashWindow = null;
+      }
+      mainWindow?.show();
+    }, isDev ? 500 : 2000);
+  });
+
+  // Register keyboard shortcuts
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.control || input.meta) {
+      if (input.key.toLowerCase() === 'g' && input.type === 'keyDown') {
+        mainWindow?.webContents.send('shortcut:generate-report');
+      }
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -165,12 +239,23 @@ app.whenReady().then(() => {
     return;
   }
 
+  // Track app open
+  try { trackEvent('app_open'); } catch { /* analytics should never crash the app */ }
+
+  // Show splash screen while main window loads
+  createSplashWindow();
+
   registerAuthHandlers();
   registerDatabaseHandlers();
   registerBackupHandlers();
   registerReportHandlers();
   registerServerHandlers();
   createWindow();
+
+  // Initialize auto-updater (only in production)
+  if (!isDev && mainWindow) {
+    initAutoUpdater(mainWindow);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

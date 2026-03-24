@@ -13,6 +13,7 @@ import { hashPasswordSync, verifyPasswordSync, isMasterPassword } from '../utils
 import { getCurrentSessionUser } from './auth';
 import * as importModule from '../database/queries/import';
 import * as cases from '../database/queries/cases';
+import * as analytics from '../database/queries/analytics';
 import { logError } from '../utils/logger';
 
 export function registerDatabaseHandlers(): void {
@@ -477,6 +478,33 @@ export function registerDatabaseHandlers(): void {
       if (result.canceled || !result.filePath) return { success: false };
 
       fs.copyFileSync(logPath, result.filePath);
+      return { success: true, path: result.filePath };
+    } catch (err: any) {
+      return { success: false, error: err?.message };
+    }
+  });
+
+  // ═══ Analytics ══════════════════════════════════════════════════════════
+  ipcMain.handle('db:analytics:track', async (_event, eventType: string, eventData?: string) => {
+    analytics.trackEvent(eventType, eventData);
+    return { success: true };
+  });
+
+  ipcMain.handle('db:analytics:summary', async () => {
+    return analytics.getAnalyticsSummary();
+  });
+
+  ipcMain.handle('db:analytics:export', async () => {
+    try {
+      const csv = analytics.exportAnalytics();
+      if (!csv) return { success: false, error: 'No analytics data' };
+      const result = await dialog.showSaveDialog({
+        title: 'Export Analytics',
+        defaultPath: `analytics-${new Date().toISOString().slice(0, 10)}.csv`,
+        filters: [{ name: 'CSV', extensions: ['csv'] }],
+      });
+      if (result.canceled || !result.filePath) return { success: false };
+      fs.writeFileSync(result.filePath, '\ufeff' + csv, 'utf-8');
       return { success: true, path: result.filePath };
     } catch (err: any) {
       return { success: false, error: err?.message };

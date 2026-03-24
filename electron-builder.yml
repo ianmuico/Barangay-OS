@@ -12,10 +12,18 @@ asar: true
 asarUnpack:
   - "**/*.node"
   - "**/better-sqlite3/**"
+publish:
+  provider: github
+  owner: mmmsss211
+  repo: barangay-management
+  private: true
 mac:
   target: dmg
   category: public.app-category.business
 win:
   target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
 linux:
   target: AppImage
