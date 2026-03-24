@@ -11,30 +11,33 @@ import { ReportGenerateDialog } from '@/components/report-generate-dialog';
 import { PageHeader } from '@/components/page-header';
 import { usePageSearch } from '@/hooks/use-page-search';
 import { getAPI, type Resident, type PaginatedResult } from '@/lib/ipc';
-import { cachedFetch } from '@/lib/cache';
 import { toast } from 'sonner';
 
 export default function FourPsPage() {
   const [result, setResult] = useState<PaginatedResult<Resident> | null>(null);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const [loaded, setLoaded] = useState(false);
   const [reportResident, setReportResident] = useState<Resident | null>(null);
 
   usePageSearch(search, setSearch, 'Search 4Ps beneficiaries...');
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const fetch4Ps = useCallback(async () => {
     const api = getAPI();
     if (!api) return;
-    const data = await cachedFetch(`fourps:${search}:${page}`, () =>
-      api.getResidents({ search, page, limit: 50, is_4ps: true })
-    );
+    const data = await api.getResidents({ search: debouncedSearch, page, limit: 50, is_4ps: true });
     setResult(data);
     setLoaded(true);
-  }, [search, page]);
+  }, [debouncedSearch, page]);
 
   useEffect(() => { fetch4Ps(); }, [fetch4Ps]);
-  useEffect(() => { setPage(1); }, [search]);
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
 
   const handleExport = async () => {
     const api = getAPI();

@@ -11,11 +11,11 @@ import { CategoryPrintDialog, INDIGENT_GROUP_OPTIONS } from '@/components/catego
 import { PageHeader } from '@/components/page-header';
 import { usePageSearch } from '@/hooks/use-page-search';
 import { getAPI, type Resident, type PaginatedResult } from '@/lib/ipc';
-import { cachedFetch } from '@/lib/cache';
 
 export default function IndigentsPage() {
   const [result, setResult] = useState<PaginatedResult<Resident> | null>(null);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const [loaded, setLoaded] = useState(false);
   const [reportResident, setReportResident] = useState<Resident | null>(null);
@@ -23,15 +23,18 @@ export default function IndigentsPage() {
 
   usePageSearch(search, setSearch, 'Search indigent residents...');
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const fetchIndigents = useCallback(async () => {
     const api = getAPI();
     if (!api) return;
-    const data = await cachedFetch(`indigents:${search}:${page}`, () =>
-      api.getResidents({ search, page, limit: 50, is_indigent: true })
-    );
+    const data = await api.getResidents({ search: debouncedSearch, page, limit: 50, is_indigent: true });
     setResult(data);
     setLoaded(true);
-  }, [search, page]);
+  }, [debouncedSearch, page]);
 
   useEffect(() => {
     fetchIndigents();
@@ -39,7 +42,7 @@ export default function IndigentsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [debouncedSearch]);
 
   const filterParams = useMemo(() => ({ is_indigent: true }), []);
 

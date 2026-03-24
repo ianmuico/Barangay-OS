@@ -49,7 +49,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getAPI, type Resident } from '@/lib/ipc';
-import { cachedFetch, invalidateCache } from '@/lib/cache';
+import { invalidateCache } from '@/lib/cache';
 import { toast } from 'sonner';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -274,20 +274,26 @@ export default function CasesPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   // ─── Data fetching ──────────────────────────────────────────────────────
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const fetchCases = useCallback(async () => {
     if (!api) return;
     setLoading(true);
     try {
       const params: Record<string, string> = {};
-      if (searchQuery) params.search = searchQuery;
+      if (debouncedSearch) params.search = debouncedSearch;
       if (filterStatus !== 'all') params.status = filterStatus;
-      const data = await cachedFetch(`cases-${searchQuery}-${filterStatus}`, () => api.getCases(params), true);
+      const data = await api.getCases(params);
       setCases(data as CaseRecord[]);
     } finally {
       setLoading(false);
     }
-  }, [api, searchQuery, filterStatus]);
+  }, [api, debouncedSearch, filterStatus]);
 
   useEffect(() => {
     fetchCases();
@@ -527,15 +533,10 @@ export default function CasesPage() {
     }
   };
 
-  // ─── Search debounce ───────────────────────────────────────────────────
+  // ─── Search handler ────────────────────────────────────────────────────
 
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = setTimeout(() => {
-      invalidateCache('cases');
-    }, 300);
   };
 
   // ─── Render ─────────────────────────────────────────────────────────────
