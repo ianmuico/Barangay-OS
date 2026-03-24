@@ -150,6 +150,13 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
     partner_id: null as number | null,
     mother_id: null as number | null,
     father_id: null as number | null,
+    // New fields
+    religion: '',
+    citizenship: 'Filipino',
+    philsys_card_no: '',
+    educational_attainment: '',
+    is_4ps: false,
+    status: 'living',
   });
   const [saving, setSaving] = useState(false);
   const [partnerName, setPartnerName] = useState('');
@@ -182,6 +189,12 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
         partner_id: resident?.partner_id || null,
         mother_id: resident?.mother_id || null,
         father_id: resident?.father_id || null,
+        religion: resident?.religion || '',
+        citizenship: resident?.citizenship || 'Filipino',
+        philsys_card_no: resident?.philsys_card_no || '',
+        educational_attainment: resident?.educational_attainment || '',
+        is_4ps: resident?.is_4ps === 1,
+        status: resident?.status || 'living',
       });
 
       const api = getAPI();
@@ -256,6 +269,7 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
       await onSave({
         ...formData,
         is_indigent: formData.is_indigent ? 1 : 0,
+        is_4ps: formData.is_4ps ? 1 : 0,
       });
       onClose();
     } finally {
@@ -476,6 +490,64 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
               </div>
             </div>
 
+            {/* ── Government & Education Section ── */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Government & Education</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">PhilSys Card No.</Label>
+                  <Input
+                    placeholder="PCN-XXXX-XXXX-XXXX"
+                    value={formData.philsys_card_no}
+                    onChange={(e) => handleChange('philsys_card_no', e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Citizenship</Label>
+                  <Input
+                    value={formData.citizenship}
+                    onChange={(e) => handleChange('citizenship', e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Religion</Label>
+                  <Input
+                    value={formData.religion}
+                    onChange={(e) => handleChange('religion', e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Educational Attainment</Label>
+                  <Select value={formData.educational_attainment || ''} onValueChange={(v) => handleChange('educational_attainment', v)}>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="None">None</SelectItem>
+                      <SelectItem value="Elementary">Elementary</SelectItem>
+                      <SelectItem value="High School">High School</SelectItem>
+                      <SelectItem value="Vocational">Vocational</SelectItem>
+                      <SelectItem value="College">College</SelectItem>
+                      <SelectItem value="Post Graduate">Post Graduate</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Status</Label>
+                <Select value={formData.status} onValueChange={(v) => handleChange('status', v)}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="living">Living</SelectItem>
+                    <SelectItem value="deceased">Deceased</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             {/* ── Family Links Section ── */}
             <div className="space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Family Links</p>
@@ -612,13 +684,23 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
             </div>
 
             {/* ── Flags ── */}
-            <div className="flex items-center space-x-3">
-              <Switch
-                id="is_indigent"
-                checked={formData.is_indigent}
-                onCheckedChange={(checked) => handleChange('is_indigent', checked)}
-              />
-              <Label htmlFor="is_indigent" className="text-sm">Indigent</Label>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center space-x-3">
+                <Switch
+                  id="is_indigent"
+                  checked={formData.is_indigent}
+                  onCheckedChange={(checked) => handleChange('is_indigent', checked)}
+                />
+                <Label htmlFor="is_indigent" className="text-sm">Indigent</Label>
+              </div>
+              <div className="flex items-center space-x-3">
+                <Switch
+                  id="is_4ps"
+                  checked={formData.is_4ps}
+                  onCheckedChange={(checked) => handleChange('is_4ps', checked)}
+                />
+                <Label htmlFor="is_4ps" className="text-sm">4Ps Beneficiary</Label>
+              </div>
             </div>
 
             {/* ── Notes ── */}

@@ -19,6 +19,8 @@ import {
 import { TemplateEditor } from '@/components/template-editor';
 import { getAPI, type ReportTemplate } from '@/lib/ipc';
 import { toast } from 'sonner';
+import { EmptyState } from '@/components/empty-state';
+import { useTranslation } from 'react-i18next';
 
 interface ListHeader {
   id: string;
@@ -33,6 +35,7 @@ function stripHtml(html: string): string {
 }
 
 export default function TemplatesPage() {
+  const { t } = useTranslation();
   // ─── Report Templates ───
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [editOpen, setEditOpen] = useState(false);
@@ -159,9 +162,16 @@ export default function TemplatesPage() {
 
           {templates.length === 0 ? (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <p className="text-muted-foreground mb-4">No templates yet. Create your first template.</p>
-                <Button onClick={openNew}><Plus className="mr-2 h-4 w-4" />Create Template</Button>
+              <CardContent className="p-0">
+                <EmptyState
+                  illustration="templates"
+                  title={t('empty.templatesTitle')}
+                  message={t('empty.templatesMessage')}
+                  primaryAction={{
+                    label: t('empty.templatesCta'),
+                    onClick: openNew,
+                  }}
+                />
               </CardContent>
             </Card>
           ) : (

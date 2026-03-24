@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { DashboardSkeleton } from '@/components/skeletons';
 import { getAPI, type DashboardStats, type DetailedStats, type AuditEntry } from '@/lib/ipc';
 import { cachedFetch } from '@/lib/cache';
+import { EmptyState } from '@/components/empty-state';
+import { useTranslation } from 'react-i18next';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -83,6 +85,7 @@ function CustomTooltip({ active, payload }: any) {
 }
 
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [detailed, setDetailed] = useState<DetailedStats | null>(null);
   const [activities, setActivities] = useState<AuditEntry[]>([]);
@@ -183,6 +186,31 @@ export default function DashboardPage() {
 
   if (stats === null) {
     return <DashboardSkeleton />;
+  }
+
+  if (stats.totalResidents === 0) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title={t('dashboard.title')} description={t('dashboard.description', { barangayName: barangayName || 'Barangay' })} />
+        <Card>
+          <CardContent className="p-0">
+            <EmptyState
+              illustration="dashboard"
+              title={t('empty.dashboardTitle')}
+              message={t('empty.dashboardMessage')}
+              primaryAction={{
+                label: t('empty.dashboardCta'),
+                onClick: () => {
+                  if (typeof window !== 'undefined') {
+                    window.location.href = '/residents';
+                  }
+                },
+              }}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   const statCards = [

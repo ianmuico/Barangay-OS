@@ -25,7 +25,7 @@ export default function UserManagementPage() {
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<string>('staff');
+  const [role, setRole] = useState<'admin' | 'staff'>('staff');
   const [currentPassword, setCurrentPassword] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -146,7 +146,7 @@ export default function UserManagementPage() {
             )}
             <div className="space-y-2">
               <Label>Role</Label>
-              <Select value={role} onValueChange={setRole}>
+              <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'staff')}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>

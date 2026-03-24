@@ -25,8 +25,11 @@ import {
 import { getAPI, type Resident, type PaginatedResult } from '@/lib/ipc';
 import { cachedFetch, invalidateCache } from '@/lib/cache';
 import { toast } from 'sonner';
+import { EmptyState } from '@/components/empty-state';
+import { useTranslation } from 'react-i18next';
 
 export default function ResidentsPage() {
+  const { t } = useTranslation();
   const [result, setResult] = useState<PaginatedResult<Resident> | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -167,6 +170,16 @@ export default function ResidentsPage() {
 
       {!loaded ? (
         <TableSkeleton />
+      ) : result && result.total === 0 && !search ? (
+        <EmptyState
+          illustration="residents"
+          title={t('empty.residentsTitle')}
+          message={t('empty.residentsMessage')}
+          primaryAction={{
+            label: t('empty.residentsCta'),
+            onClick: () => { setEditResident(null); setFormOpen(true); },
+          }}
+        />
       ) : (
         <DataTable
           columns={columns}

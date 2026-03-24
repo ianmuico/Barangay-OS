@@ -23,6 +23,13 @@ export interface Resident {
   mother_id: number | null;
   father_id: number | null;
   notes: string | null;
+  religion: string | null;
+  citizenship: string | null;
+  philsys_card_no: string | null;
+  educational_attainment: string | null;
+  is_4ps: number;
+  status: string;
+  import_batch_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -139,22 +146,27 @@ export function searchResidents(query: string, limit: number = 20): (Resident & 
   `).all(searchTerm, searchTerm, searchTerm, limit) as (Resident & { age: number })[];
 }
 
-export function createResident(data: any): number {
+export function createResident(data: Partial<Resident> & { first_name: string; last_name: string; birth_date: string; gender: string; civil_status: string }): number {
   const db = getDb();
   const result = db.prepare(`
     INSERT INTO residents (
       first_name, middle_name, last_name, suffix, birth_date, gender,
       civil_status, address, purok, contact_number, email, occupation,
       is_indigent, voter_status, blood_type, photo_path, household_id,
-      partner_id, mother_id, father_id, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      partner_id, mother_id, father_id, notes,
+      religion, citizenship, philsys_card_no, educational_attainment,
+      is_4ps, status, import_batch_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.first_name, data.middle_name || null, data.last_name, data.suffix || null,
     data.birth_date, data.gender, data.civil_status, data.address || '',
     data.purok || null, data.contact_number || null, data.email || null, data.occupation || null,
     data.is_indigent || 0, data.voter_status || 'Not Registered', data.blood_type || null,
     data.photo_path || null, data.household_id || null, data.partner_id || null,
-    data.mother_id || null, data.father_id || null, data.notes || null
+    data.mother_id || null, data.father_id || null, data.notes || null,
+    data.religion || null, data.citizenship || 'Filipino', data.philsys_card_no || null,
+    data.educational_attainment || null, data.is_4ps || 0, data.status || 'living',
+    data.import_batch_id || null
   );
   const newId = result.lastInsertRowid as number;
 
@@ -181,16 +193,18 @@ export function unlinkPartner(residentId: number): void {
   db.prepare("UPDATE residents SET partner_id = NULL, updated_at = datetime('now') WHERE id = ?").run(residentId);
 }
 
-export function updateResident(id: number, data: Partial<any>): void {
+export function updateResident(id: number, data: Partial<Resident>): void {
   const db = getDb();
   const fields: string[] = [];
-  const values: any[] = [];
+  const values: (string | number | null)[] = [];
 
   const allowedFields = [
     'first_name', 'middle_name', 'last_name', 'suffix', 'birth_date',
     'gender', 'civil_status', 'address', 'purok', 'contact_number', 'email',
     'occupation', 'is_indigent', 'voter_status', 'blood_type',
-    'photo_path', 'household_id', 'partner_id', 'mother_id', 'father_id', 'notes'
+    'photo_path', 'household_id', 'partner_id', 'mother_id', 'father_id', 'notes',
+    'religion', 'citizenship', 'philsys_card_no', 'educational_attainment',
+    'is_4ps', 'status', 'import_batch_id'
   ];
 
   for (const [key, value] of Object.entries(data)) {

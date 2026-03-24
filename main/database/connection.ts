@@ -148,9 +148,8 @@ function runInlineMigrations(db: Database.Database): void {
     { name: '002_seed_admin.sql',                  sql: MIGRATION_002 },
     { name: '003_partners_officials_purok.sql',    sql: MIGRATION_003 },
     { name: '004_parents.sql',                     sql: MIGRATION_004 },
+    { name: '005_new_tables_and_fields.sql',       sql: MIGRATION_005 },
     // ─── Add future migrations here ────────────────────────────────────
-    // { name: '005_certificates.sql', sql: MIGRATION_005 },
-    // { name: '006_new_feature.sql',  sql: MIGRATION_006 },
   ];
 
   const pending = allInline.filter(m => !applied.has(m.name));
@@ -306,4 +305,72 @@ const MIGRATION_004 = `
 -- Add mother and father references to residents
 ALTER TABLE residents ADD COLUMN mother_id INTEGER REFERENCES residents(id) ON DELETE SET NULL;
 ALTER TABLE residents ADD COLUMN father_id INTEGER REFERENCES residents(id) ON DELETE SET NULL;
+`;
+
+const MIGRATION_005 = `
+-- New resident fields from RBI Form 8
+ALTER TABLE residents ADD COLUMN religion TEXT;
+ALTER TABLE residents ADD COLUMN citizenship TEXT DEFAULT 'Filipino';
+ALTER TABLE residents ADD COLUMN philsys_card_no TEXT;
+ALTER TABLE residents ADD COLUMN educational_attainment TEXT;
+ALTER TABLE residents ADD COLUMN is_4ps INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE residents ADD COLUMN status TEXT NOT NULL DEFAULT 'living' CHECK(status IN ('living', 'deceased'));
+
+-- Import batches for CSV import with rollback support
+CREATE TABLE IF NOT EXISTS import_batches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  filename TEXT,
+  total_imported INTEGER NOT NULL DEFAULT 0,
+  total_skipped INTEGER NOT NULL DEFAULT 0,
+  total_errors INTEGER NOT NULL DEFAULT 0,
+  imported_by INTEGER REFERENCES users(id),
+  status TEXT NOT NULL DEFAULT 'completed' CHECK(status IN ('completed', 'rolled_back')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Link residents to import batches for rollback
+ALTER TABLE residents ADD COLUMN import_batch_id INTEGER REFERENCES import_batches(id) ON DELETE SET NULL;
+
+-- Local usage analytics events
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_type TEXT NOT NULL,
+  event_data TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Barangay cases (mediation, complaints, disputes)
+CREATE TABLE IF NOT EXISTS cases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_number TEXT UNIQUE,
+  case_type TEXT NOT NULL DEFAULT 'mediation' CHECK(case_type IN ('mediation', 'complaint', 'dispute', 'other')),
+  complainant_id INTEGER REFERENCES residents(id) ON DELETE SET NULL,
+  respondent_id INTEGER REFERENCES residents(id) ON DELETE SET NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'ongoing', 'resolved', 'dismissed')),
+  filed_date TEXT NOT NULL DEFAULT (date('now')),
+  resolved_date TEXT,
+  resolution_notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Summons for cases
+CREATE TABLE IF NOT EXISTS summons (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  summoned_resident_id INTEGER REFERENCES residents(id) ON DELETE SET NULL,
+  summon_number INTEGER NOT NULL DEFAULT 1,
+  summon_date TEXT NOT NULL,
+  summon_time TEXT,
+  status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled', 'served', 'appeared', 'no_show')),
+  served_by_official_id INTEGER REFERENCES officials(id) ON DELETE SET NULL,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Add language preference setting
+INSERT OR IGNORE INTO settings (key, value) VALUES ('language', 'fil');
+-- Add setup_completed flag
+INSERT OR IGNORE INTO settings (key, value) VALUES ('setup_completed', '0');
 `;
