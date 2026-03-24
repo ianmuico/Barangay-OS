@@ -13,6 +13,8 @@ import {
   XCircle,
   AlertCircle,
   FileText,
+  Printer,
+  FileDown,
 } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
@@ -296,6 +298,54 @@ export default function CasesPage() {
     const data = await api.getSummons(caseId);
     setSummons(data);
   }, [api]);
+
+  // ─── Print case details ────────────────────────────────────────────────
+  const handlePrintCase = async () => {
+    if (!api || !detailCase) return;
+    const settings = await api.getAllSettings();
+    const html = `
+      <div style="text-align:center;margin-bottom:20px;">
+        <p style="margin:0;font-size:10pt;">Republic of the Philippines</p>
+        <p style="margin:0;font-size:10pt;">${settings.province || ''}</p>
+        <p style="margin:0;font-size:10pt;">Municipality of ${settings.municipality || ''}</p>
+        <p style="margin:4px 0;font-size:14pt;font-weight:bold;">${(settings.barangay_name || 'BARANGAY').toUpperCase()}</p>
+        <p style="margin:0;font-size:10pt;">OFFICE OF THE LUPONG TAGAPAMAYAPA</p>
+      </div>
+      <h2 style="text-align:center;margin:20px 0;">CASE RECORD</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:11pt;">
+        <tr><td style="padding:6px;border:1px solid #000;width:30%;font-weight:bold;">Case Number</td><td style="padding:6px;border:1px solid #000;">${detailCase.case_number}</td></tr>
+        <tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Type</td><td style="padding:6px;border:1px solid #000;">${detailCase.case_type}</td></tr>
+        <tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Complainant</td><td style="padding:6px;border:1px solid #000;">${detailCase.complainant_name || '-'}</td></tr>
+        <tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Respondent</td><td style="padding:6px;border:1px solid #000;">${detailCase.respondent_name || '-'}</td></tr>
+        <tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Filed Date</td><td style="padding:6px;border:1px solid #000;">${detailCase.filed_date}</td></tr>
+        <tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Status</td><td style="padding:6px;border:1px solid #000;">${detailCase.status.toUpperCase()}</td></tr>
+        ${detailCase.description ? `<tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Description</td><td style="padding:6px;border:1px solid #000;">${detailCase.description}</td></tr>` : ''}
+        ${detailCase.resolution_notes ? `<tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Resolution</td><td style="padding:6px;border:1px solid #000;">${detailCase.resolution_notes}</td></tr>` : ''}
+      </table>
+      ${summons.length > 0 ? `
+        <h3 style="margin:20px 0 10px;">Summons History</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:10pt;">
+          <tr style="background:#f0f0f0;">
+            <th style="padding:6px;border:1px solid #000;">#</th>
+            <th style="padding:6px;border:1px solid #000;">Date</th>
+            <th style="padding:6px;border:1px solid #000;">Time</th>
+            <th style="padding:6px;border:1px solid #000;">Status</th>
+            <th style="padding:6px;border:1px solid #000;">Notes</th>
+          </tr>
+          ${summons.map((s: any) => `
+            <tr>
+              <td style="padding:6px;border:1px solid #000;text-align:center;">${s.summon_number}</td>
+              <td style="padding:6px;border:1px solid #000;">${s.summon_date}</td>
+              <td style="padding:6px;border:1px solid #000;">${s.summon_time || '-'}</td>
+              <td style="padding:6px;border:1px solid #000;">${s.status}</td>
+              <td style="padding:6px;border:1px solid #000;">${s.notes || '-'}</td>
+            </tr>
+          `).join('')}
+        </table>
+      ` : ''}
+    `;
+    await api.printReport(html);
+  };
 
   // ─── Case form handlers ────────────────────────────────────────────────
 
@@ -717,20 +767,26 @@ export default function CasesPage() {
                 )}
 
                 {/* Action buttons */}
-                {(detailCase.status === 'pending' || detailCase.status === 'ongoing') && (
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => {
-                      openEditCase(detailCase);
-                    }}>
-                      <Pencil className="mr-2 h-3.5 w-3.5" />
-                      Edit Case
-                    </Button>
-                    <Button size="sm" onClick={openResolve} className="bg-green-600 hover:bg-green-700 text-white">
-                      <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
-                      Resolve / Dismiss
-                    </Button>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={handlePrintCase}>
+                    <Printer className="mr-2 h-3.5 w-3.5" />
+                    Print Case
+                  </Button>
+                  {(detailCase.status === 'pending' || detailCase.status === 'ongoing') && (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => {
+                        openEditCase(detailCase);
+                      }}>
+                        <Pencil className="mr-2 h-3.5 w-3.5" />
+                        Edit Case
+                      </Button>
+                      <Button size="sm" onClick={openResolve} className="bg-green-600 hover:bg-green-700 text-white">
+                        <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
+                        Resolve / Dismiss
+                      </Button>
+                    </>
+                  )}
+                </div>
 
                 {/* ─── Summons Timeline ────────────────────────────────────── */}
                 <div className="pt-2">

@@ -261,8 +261,10 @@ export default function TemplatesPage() {
             <DialogTitle>Preview: {previewTemplate?.name}</DialogTitle>
             <DialogDescription>Variables will be replaced with resident data when generating.</DialogDescription>
           </DialogHeader>
-          <div className="rounded-md border bg-white p-8 text-black min-h-[400px]" style={{ fontFamily: "'Times New Roman', serif", fontSize: '12pt', lineHeight: 1.6 }}>
-            {previewTemplate && <div dangerouslySetInnerHTML={{ __html: previewTemplate.content_html }} />}
+          <div className="bg-muted/40 p-6 rounded-md overflow-auto">
+            <div className="mx-auto max-w-[700px] min-h-[600px] bg-white text-black rounded shadow-md p-[60px]" style={{ fontFamily: "'Times New Roman', serif", fontSize: '12pt', lineHeight: 1.6 }}>
+              {previewTemplate && <div dangerouslySetInnerHTML={{ __html: previewTemplate.content_html }} />}
+            </div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setPreviewTemplate(null)}>Close</Button></DialogFooter>
         </DialogContent>
@@ -296,8 +298,10 @@ export default function TemplatesPage() {
             <DialogTitle>Preview: {previewHeader?.name}</DialogTitle>
             <DialogDescription>This header appears at the top of printed resident lists.</DialogDescription>
           </DialogHeader>
-          <div className="rounded-md border bg-white p-8 text-black min-h-[200px]" style={{ fontFamily: "'Times New Roman', serif", fontSize: '12pt', lineHeight: 1.6 }}>
-            {previewHeader && <div dangerouslySetInnerHTML={{ __html: previewHeader.content_html }} />}
+          <div className="bg-muted/40 p-6 rounded-md overflow-auto">
+            <div className="mx-auto max-w-[700px] min-h-[200px] bg-white text-black rounded shadow-md p-[60px]" style={{ fontFamily: "'Times New Roman', serif", fontSize: '12pt', lineHeight: 1.6 }}>
+              {previewHeader && <div dangerouslySetInnerHTML={{ __html: previewHeader.content_html }} />}
+            </div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setPreviewHeader(null)}>Close</Button></DialogFooter>
         </DialogContent>

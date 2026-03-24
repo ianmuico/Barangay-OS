@@ -224,8 +224,10 @@ export function ReportGenerateDialog({ open, onClose, resident }: ReportGenerate
                 </div>
               </div>
               {activeReport && (
-                <div className="rounded-md border bg-white p-8 text-black max-h-[400px] overflow-y-auto" style={{ fontFamily: "'Times New Roman', serif", fontSize: '12pt', lineHeight: 1.6 }}>
-                  <div dangerouslySetInnerHTML={{ __html: activeReport.html }} />
+                <div className="bg-muted/40 p-4 rounded-md overflow-auto max-h-[450px]">
+                  <div className="mx-auto max-w-[700px] min-h-[500px] bg-white text-black rounded shadow-md p-[60px]" style={{ fontFamily: "'Times New Roman', serif", fontSize: '12pt', lineHeight: 1.6 }}>
+                    <div dangerouslySetInnerHTML={{ __html: activeReport.html }} />
+                  </div>
                 </div>
               )}
             </>

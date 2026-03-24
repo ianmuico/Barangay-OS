@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { TEMPLATE_VARIABLES } from '@/lib/constants';
+import { TEMPLATE_VARIABLES, TEMPLATE_SPECIAL_TAGS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
 interface TemplateEditorProps {
@@ -37,6 +37,22 @@ export function TemplateEditor({ content, onChange }: TemplateEditorProps) {
 
   const insertVariable = (key: string) => {
     editor.chain().focus().insertContent(`{{${key}}}`).run();
+  };
+
+  const insertSpecialTag = (key: string) => {
+    if (key === 'header') {
+      editor.chain().focus().insertContent('{{header}}').run();
+    } else if (key === 'input') {
+      const fieldName = window.prompt('Enter the input field name (e.g., "purpose", "amount"):');
+      if (fieldName && fieldName.trim()) {
+        editor.chain().focus().insertContent(`{{input:${fieldName.trim()}}}`).run();
+      }
+    } else if (key === 'signatory') {
+      const role = window.prompt('Enter the signatory role (e.g., "punong_barangay", "secretary", "treasurer"):');
+      if (role && role.trim()) {
+        editor.chain().focus().insertContent(`{{signatory:${role.trim()}}}`).run();
+      }
+    }
   };
 
   const ToolbarButton = ({
@@ -128,12 +144,41 @@ export function TemplateEditor({ content, onChange }: TemplateEditorProps) {
             ))}
           </SelectContent>
         </Select>
+
+        <Select onValueChange={insertSpecialTag}>
+          <SelectTrigger className="h-8 w-[180px]">
+            <SelectValue placeholder="Special Tags" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="header">
+              Barangay Header (letterhead)
+            </SelectItem>
+            <SelectItem value="input">
+              Custom Input Field
+            </SelectItem>
+            <SelectItem value="signatory">
+              Signatory
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      <EditorContent
-        editor={editor}
-        className="prose prose-sm dark:prose-invert max-w-none p-4 min-h-[400px] focus:outline-none [&_.ProseMirror]:min-h-[380px] [&_.ProseMirror]:outline-none"
-      />
+      {/* A4 paper-like editor area */}
+      <div className="bg-muted/40 p-6 overflow-auto">
+        <EditorContent
+          editor={editor}
+          className={cn(
+            'mx-auto max-w-[700px] min-h-[600px] bg-white text-black rounded shadow-md',
+            '[&_.ProseMirror]:min-h-[600px] [&_.ProseMirror]:outline-none [&_.ProseMirror]:p-[60px]',
+            '[&_.ProseMirror]:font-serif [&_.ProseMirror]:text-[12pt] [&_.ProseMirror]:leading-[1.6]',
+            '[&_.ProseMirror_h1]:font-serif [&_.ProseMirror_h2]:font-serif',
+            '[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-gray-400',
+          )}
+          style={{
+            fontFamily: "'Times New Roman', serif",
+          }}
+        />
+      </div>
     </div>
   );
 }
