@@ -324,7 +324,8 @@ export interface ElectronAPI {
   updateTemplate: (id: number, data: Partial<TemplateData>) => Promise<{ success: boolean }>;
   deleteTemplate: (id: number) => Promise<{ success: boolean }>;
 
-  generateReport: (templateId: number, residentId: number) => Promise<{ success: boolean; html?: string; reportId?: number; error?: string }>;
+  getInputFields: (templateId: number) => Promise<string[]>;
+  generateReport: (templateId: number, residentId: number, inputValues?: Record<string, string>) => Promise<{ success: boolean; html?: string; reportId?: number; error?: string }>;
   exportPDF: (html: string, filename: string) => Promise<{ success: boolean; path?: string; error?: string }>;
   printReport: (html: string) => Promise<{ success: boolean; error?: string }>;
   generateMultiReport: (templateIds: number[], residentId: number) => Promise<{ success: boolean; reports?: { templateName: string; html: string }[]; error?: string }>;

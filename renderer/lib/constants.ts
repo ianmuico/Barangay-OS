@@ -23,6 +23,17 @@ export const TEMPLATE_VARIABLES = [
   { key: 'province', label: 'Province', description: 'Province name' },
   { key: 'date', label: 'Current Date', description: 'Today\'s date formatted' },
   { key: 'year', label: 'Current Year', description: 'Current year' },
+  { key: 'religion', label: 'Religion', description: 'Resident\'s religion' },
+  { key: 'citizenship', label: 'Citizenship', description: 'Resident\'s citizenship' },
+  { key: 'philsysCardNo', label: 'PhilSys Card No.', description: 'National ID number' },
+  { key: 'educationalAttainment', label: 'Educational Attainment', description: 'Highest education level' },
+];
+
+// Special template tags
+export const TEMPLATE_SPECIAL_TAGS = [
+  { key: '{{header}}', label: 'Barangay Header', description: 'Inserts the standard letterhead with logos and barangay info' },
+  { key: '{{input:fieldName}}', label: 'Custom Input', description: 'Shows a text input box when generating (replace fieldName with your field)' },
+  { key: '{{signatory:role}}', label: 'Signatory', description: 'Auto-fills from officials table (e.g., {{signatory:punong_barangay}})' },
 ];
 
 export const GRADIENT_COLORS = [

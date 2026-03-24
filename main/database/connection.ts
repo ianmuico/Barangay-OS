@@ -149,6 +149,7 @@ function runInlineMigrations(db: Database.Database): void {
     { name: '003_partners_officials_purok.sql',    sql: MIGRATION_003 },
     { name: '004_parents.sql',                     sql: MIGRATION_004 },
     { name: '005_new_tables_and_fields.sql',       sql: MIGRATION_005 },
+    { name: '006_seed_templates.sql',              sql: MIGRATION_006 },
     // ─── Add future migrations here ────────────────────────────────────
   ];
 
@@ -373,4 +374,40 @@ CREATE TABLE IF NOT EXISTS summons (
 INSERT OR IGNORE INTO settings (key, value) VALUES ('language', 'fil');
 -- Add setup_completed flag
 INSERT OR IGNORE INTO settings (key, value) VALUES ('setup_completed', '0');
+`;
+
+const MIGRATION_006 = `
+-- Pre-built certificate templates
+INSERT OR IGNORE INTO report_templates (name, content_html, variables_json) VALUES
+('Barangay Clearance',
+'{{header}}<div style="text-align:center;margin-bottom:10px;"><p style="font-size:10pt;">OFFICE OF THE SANGGUNIANG BARANGAY</p><h2 style="margin:10px 0;letter-spacing:2px;">BARANGAY CLEARANCE</h2></div><p>TO WHOM IT MAY CONCERN:</p><p style="text-indent:40px;">This is to certify that <strong>{{fullName}}</strong>, of legal age, {{civilStatus}}, Filipino citizen, and a bonafide resident of Purok {{purok}}, {{barangay}}, {{municipality}}, {{province}}, is known to be of good moral character and has no derogatory record filed in this office.</p><p style="text-indent:40px;">This clearance is being issued upon the request of the above-named person for <strong>{{input:purpose}}</strong> purposes.</p><p style="text-indent:40px;">Issued this <strong>{{date}}</strong> at {{barangay}}, {{municipality}}, {{province}}.</p>{{signatory:punong_barangay}}',
+''["fullName","civilStatus","purok","barangay","municipality","province","date"]''),
+
+('Certificate of Residency',
+'{{header}}<div style="text-align:center;margin-bottom:10px;"><p style="font-size:10pt;">OFFICE OF THE SANGGUNIANG BARANGAY</p><h2 style="margin:10px 0;letter-spacing:2px;">CERTIFICATE OF RESIDENCY</h2></div><p>TO WHOM IT MAY CONCERN:</p><p style="text-indent:40px;">This is to certify that <strong>{{fullName}}</strong>, {{age}} years old, {{civilStatus}}, Filipino citizen, is a bonafide resident of Purok {{purok}}, {{barangay}}, {{municipality}}, {{province}} since <strong>{{input:since_when}}</strong>.</p><p style="text-indent:40px;">This certification is being issued upon the request of the above-named person for <strong>{{input:purpose}}</strong> purposes.</p><p style="text-indent:40px;">Issued this <strong>{{date}}</strong> at {{barangay}}, {{municipality}}, {{province}}.</p>{{signatory:punong_barangay}}',
+''["fullName","age","civilStatus","purok","barangay","municipality","province","date"]''),
+
+('Certificate of Indigency',
+'{{header}}<div style="text-align:center;margin-bottom:10px;"><p style="font-size:10pt;">OFFICE OF THE SANGGUNIANG BARANGAY</p><h2 style="margin:10px 0;letter-spacing:2px;">CERTIFICATE OF INDIGENCY</h2></div><p>TO WHOM IT MAY CONCERN:</p><p style="text-indent:40px;">This is to certify that <strong>{{fullName}}</strong>, {{age}} years old, {{civilStatus}}, Filipino citizen, and a bonafide resident of Purok {{purok}}, {{barangay}}, {{municipality}}, {{province}}, belongs to an indigent family in this barangay.</p><p style="text-indent:40px;">This certification is being issued upon the request of the above-named person for the medical assistance of <strong>{{input:patient_name}}</strong> for <strong>{{input:purpose}}</strong> purposes.</p><p style="text-indent:40px;">Issued this <strong>{{date}}</strong> at {{barangay}}, {{municipality}}, {{province}}.</p>{{signatory:punong_barangay}}',
+''["fullName","age","civilStatus","purok","barangay","municipality","province","date"]''),
+
+('Business Clearance',
+'{{header}}<div style="text-align:center;margin-bottom:10px;"><p style="font-size:10pt;">OFFICE OF THE SANGGUNIANG BARANGAY</p><h2 style="margin:10px 0;letter-spacing:2px;">BUSINESS CLEARANCE</h2></div><p>TO WHOM IT MAY CONCERN:</p><p style="text-indent:40px;">This is to certify that the business known as <strong>{{input:business_name}}</strong> located at <strong>{{input:location}}</strong>, owned and operated by <strong>{{fullName}}</strong>, has been granted clearance to operate within the jurisdiction of this barangay.</p><p style="text-indent:40px;">The owner has complied with all barangay requirements and regulations.</p><p style="text-indent:40px;">Issued this <strong>{{date}}</strong> at {{barangay}}, {{municipality}}, {{province}}.</p>{{signatory:punong_barangay}}',
+''["fullName","barangay","municipality","province","date"]''),
+
+('Certification for Loan',
+'{{header}}<div style="text-align:center;margin-bottom:10px;"><p style="font-size:10pt;">OFFICE OF THE SANGGUNIANG BARANGAY</p><h2 style="margin:10px 0;letter-spacing:2px;">CERTIFICATION</h2></div><p>TO WHOM IT MAY CONCERN:</p><p style="text-indent:40px;">This is to certify that <strong>{{fullName}}</strong>, of legal age, {{civilStatus}}, Filipino citizen, is a bonafide resident of Purok {{purok}}, {{barangay}}, {{municipality}}, {{province}}.</p><p style="text-indent:40px;">It is further certified that the above-named person is the owner/operator of <strong>{{input:business_name}}</strong> located at <strong>{{input:business_location}}</strong>.</p><p style="text-indent:40px;">This certification is being issued in connection with the loan application of the above-named person at <strong>{{input:lender}}</strong>.</p><p style="text-indent:40px;">Issued this <strong>{{date}}</strong>.</p>{{signatory:punong_barangay}}',
+''["fullName","civilStatus","purok","barangay","municipality","province","date"]''),
+
+('First Time Job Seekers (RA 11261)',
+'{{header}}<div style="text-align:center;margin-bottom:10px;"><p style="font-size:10pt;">OFFICE OF THE SANGGUNIANG BARANGAY</p><h2 style="margin:10px 0;letter-spacing:2px;">CERTIFICATION</h2><p style="font-size:10pt;">(First Time Jobseekers Assistance Act — RA 11261)</p></div><p>TO WHOM IT MAY CONCERN:</p><p style="text-indent:40px;">This is to certify that <strong>{{fullName}}</strong>, {{age}} years old, {{civilStatus}}, Filipino citizen, and a bonafide resident of Purok {{purok}}, {{barangay}}, {{municipality}}, {{province}}, is a FIRST TIME JOBSEEKER and has not yet been employed.</p><p style="text-indent:40px;">This certification is valid for one (1) year from the date of issuance. Certification No.: <strong>{{input:certification_number}}</strong></p><p style="text-indent:40px;">Issued this <strong>{{date}}</strong>.</p>{{signatory:punong_barangay}}',
+''["fullName","age","civilStatus","purok","barangay","municipality","province","date"]''),
+
+('Out of School Youth (OSY)',
+'{{header}}<div style="text-align:center;margin-bottom:10px;"><p style="font-size:10pt;">OFFICE OF THE SANGGUNIANG BARANGAY</p><h2 style="margin:10px 0;letter-spacing:2px;">CERTIFICATION</h2><p style="font-size:10pt;">Out of School Youth</p></div><p>TO WHOM IT MAY CONCERN:</p><p style="text-indent:40px;">This is to certify that <strong>{{fullName}}</strong>, {{age}} years old, {{civilStatus}}, Filipino citizen, and a bonafide resident of Purok {{purok}}, {{barangay}}, {{municipality}}, {{province}}, is an Out of School Youth (OSY) and is currently not enrolled in any educational institution.</p><p style="text-indent:40px;">This certification is being issued for whatever legal purpose it may serve.</p><p style="text-indent:40px;">Issued this <strong>{{date}}</strong>.</p>{{signatory:punong_barangay}}',
+''["fullName","age","civilStatus","purok","barangay","municipality","province","date"]''),
+
+('Residence Certificate (4Ps)',
+'{{header}}<div style="text-align:center;margin-bottom:10px;"><p style="font-size:10pt;">OFFICE OF THE SANGGUNIANG BARANGAY</p><h2 style="margin:10px 0;letter-spacing:2px;">RESIDENCE CERTIFICATE</h2><p style="font-size:10pt;">Pantawid Pamilyang Pilipino Program (4Ps)</p></div><p>TO WHOM IT MAY CONCERN:</p><p style="text-indent:40px;">This is to certify that <strong>{{fullName}}</strong>, of legal age, {{civilStatus}}, Filipino citizen, is a bonafide resident of Purok {{purok}}, {{barangay}}, {{municipality}}, {{province}}, and is a beneficiary of the Pantawid Pamilyang Pilipino Program (4Ps).</p><p style="text-indent:40px;">It is further certified that <strong>{{input:minor_name}}</strong> is the child/dependent of the above-named person residing in the same address.</p><p style="text-indent:40px;">Issued this <strong>{{date}}</strong>.</p>{{signatory:punong_barangay}}',
+''["fullName","civilStatus","purok","barangay","municipality","province","date"]'');
 `;

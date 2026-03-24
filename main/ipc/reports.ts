@@ -5,6 +5,7 @@ import { getTemplateById } from '../database/queries/templates';
 import { getResidentById } from '../database/queries/residents';
 import { createGeneratedReport } from '../database/queries/reports';
 import { getSetting } from '../database/queries/settings';
+import { listOfficials } from '../database/queries/officials';
 import { logAudit } from '../database/queries/audit';
 import { getCurrentSessionUser } from './auth';
 
@@ -27,7 +28,64 @@ function formatDate(date: Date): string {
   });
 }
 
-function resolveVariables(html: string, resident: any): string {
+function buildHeaderHtml(): string {
+  const barangayName = getSetting('barangay_name') || 'BARANGAY';
+  const municipality = getSetting('municipality') || '';
+  const province = getSetting('province') || '';
+  const logoBase64 = getLogoBase64();
+
+  const logoImg = logoBase64
+    ? `<img src="${logoBase64}" style="width:70px;height:70px;object-fit:contain;" />`
+    : '';
+
+  return `<div style="text-align:center;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
+      ${logoImg}
+      <div>
+        <p style="margin:0;font-size:10pt;">Republic of the Philippines</p>
+        <p style="margin:0;font-size:10pt;">${province}</p>
+        <p style="margin:0;font-size:10pt;">Municipality of ${municipality}</p>
+        <p style="margin:4px 0 0;font-size:14pt;font-weight:bold;letter-spacing:1px;">${barangayName.toUpperCase()}</p>
+      </div>
+      ${logoImg ? '<div style="width:70px;"></div>' : ''}
+    </div>
+  </div>`;
+}
+
+function resolveSignatories(html: string): string {
+  const officials = listOfficials();
+
+  return html.replace(/\{\{signatory:(\w+)\}\}/g, (match, role) => {
+    const roleLower = role.toLowerCase();
+
+    // Find official by position (case-insensitive partial match)
+    const official = officials.find(o => {
+      const pos = o.position.toLowerCase().replace(/[^a-z]/g, '');
+      return pos.includes(roleLower) || roleLower.includes(pos);
+    });
+
+    if (official) {
+      const name = [official.first_name, official.last_name].filter(Boolean).join(' ');
+      const position = official.position;
+      return `<div style="text-align:center;margin-top:40px;">
+        <div style="border-top:1px solid #000;display:inline-block;padding-top:4px;min-width:200px;">
+          <strong>${name.toUpperCase()}</strong><br/>
+          <span style="font-size:10pt;">${position}</span>
+        </div>
+      </div>`;
+    }
+
+    // Return placeholder if no official found
+    return `<div style="text-align:center;margin-top:40px;">
+      <div style="border-top:1px solid #000;display:inline-block;padding-top:4px;min-width:200px;">
+        <strong>_________________________</strong><br/>
+        <span style="font-size:10pt;">${role}</span>
+      </div>
+    </div>`;
+  });
+}
+
+function resolveVariables(html: string, resident: any, inputValues?: Record<string, string>): string {
   const fullName = [resident.first_name, resident.middle_name, resident.last_name, resident.suffix]
     .filter(Boolean)
     .join(' ');
@@ -63,6 +121,12 @@ function resolveVariables(html: string, resident: any): string {
     voterStatus: resident.voter_status || '',
     bloodType: resident.blood_type || '',
     partnerName,
+    // New fields
+    religion: resident.religion || '',
+    citizenship: resident.citizenship || 'Filipino',
+    philsysCardNo: resident.philsys_card_no || '',
+    educationalAttainment: resident.educational_attainment || '',
+    // Settings
     barangay: getSetting('barangay_name') || '',
     barangayAddress: getSetting('barangay_address') || '',
     municipality: getSetting('municipality') || '',
@@ -72,6 +136,22 @@ function resolveVariables(html: string, resident: any): string {
   };
 
   let result = html;
+
+  // Resolve {{header}} tag
+  result = result.replace(/\{\{header\}\}/g, buildHeaderHtml());
+
+  // Resolve {{input:fieldName}} — replace with provided values or leave placeholder
+  result = result.replace(/\{\{input:(\w+)\}\}/g, (match, fieldName) => {
+    if (inputValues && inputValues[fieldName] !== undefined) {
+      return inputValues[fieldName];
+    }
+    return `<span style="color:#666;text-decoration:underline;">___${fieldName}___</span>`;
+  });
+
+  // Resolve {{signatory:role}} tags
+  result = resolveSignatories(result);
+
+  // Resolve standard variables
   for (const [key, value] of Object.entries(variables)) {
     result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
   }
@@ -140,15 +220,32 @@ function buildFullHtml(html: string): string {
 </html>`;
 }
 
+// Extract {{input:fieldName}} tags from template HTML
+function extractInputFields(html: string): string[] {
+  const regex = /\{\{input:(\w+)\}\}/g;
+  const fields: string[] = [];
+  let match;
+  while ((match = regex.exec(html)) !== null) {
+    if (!fields.includes(match[1])) fields.push(match[1]);
+  }
+  return fields;
+}
+
 export function registerReportHandlers(): void {
-  ipcMain.handle('reports:generate', async (_event, templateId: number, residentId: number) => {
+  // Get input fields required by a template
+  ipcMain.handle('reports:getInputFields', async (_event, templateId: number) => {
+    const template = getTemplateById(templateId);
+    if (!template) return [];
+    return extractInputFields(template.content_html);
+  });
+  ipcMain.handle('reports:generate', async (_event, templateId: number, residentId: number, inputValues?: Record<string, string>) => {
     const template = getTemplateById(templateId);
     if (!template) return { success: false, error: 'Template not found' };
 
     const resident = getResidentById(residentId);
     if (!resident) return { success: false, error: 'Resident not found' };
 
-    const resolvedHtml = resolveVariables(template.content_html, resident);
+    const resolvedHtml = resolveVariables(template.content_html, resident, inputValues);
 
     const user = getCurrentSessionUser();
     const reportId = createGeneratedReport({

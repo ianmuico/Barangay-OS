@@ -12,6 +12,7 @@ import * as officials from '../database/queries/officials';
 import { hashPasswordSync, verifyPasswordSync, isMasterPassword } from '../utils/hash';
 import { getCurrentSessionUser } from './auth';
 import * as importModule from '../database/queries/import';
+import * as cases from '../database/queries/cases';
 import { logError } from '../utils/logger';
 
 export function registerDatabaseHandlers(): void {
@@ -312,6 +313,42 @@ export function registerDatabaseHandlers(): void {
     const mime = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
     const data = fs.readFileSync(logoPath);
     return `data:${mime};base64,${data.toString('base64')}`;
+  });
+
+  // ═══ Cases & Summons ════════════════════════════════════════════════════
+  ipcMain.handle('db:cases:list', async (_event, params?: { search?: string; status?: string }) => {
+    return cases.listCases(params);
+  });
+  ipcMain.handle('db:cases:get', async (_event, id: number) => {
+    return cases.getCaseById(id);
+  });
+  ipcMain.handle('db:cases:create', async (_event, data: any) => {
+    const id = cases.createCase(data);
+    const user = getCurrentSessionUser();
+    audit.logAudit(user?.id || null, 'CASE_CREATED', `Created case`);
+    return id;
+  });
+  ipcMain.handle('db:cases:update', async (_event, id: number, data: any) => {
+    cases.updateCase(id, data);
+    return { success: true };
+  });
+  ipcMain.handle('db:cases:delete', async (_event, id: number) => {
+    cases.deleteCase(id);
+    return { success: true };
+  });
+  ipcMain.handle('db:summons:list', async (_event, caseId: number) => {
+    return cases.listSummons(caseId);
+  });
+  ipcMain.handle('db:summons:create', async (_event, data: any) => {
+    return cases.createSummon(data);
+  });
+  ipcMain.handle('db:summons:update', async (_event, id: number, data: any) => {
+    cases.updateSummon(id, data);
+    return { success: true };
+  });
+  ipcMain.handle('db:summons:delete', async (_event, id: number) => {
+    cases.deleteSummon(id);
+    return { success: true };
   });
 
   // ═══ CSV Import / Export ════════════════════════════════════════════════

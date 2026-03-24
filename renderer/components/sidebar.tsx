@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, UserCheck, HeartHandshake, Baby,
   GitBranch, FileSearch, FileText, Landmark,
   Settings, Building2, Shield, Database, Wifi, Info,
-  ChevronDown, Loader2, Heart, Archive,
+  ChevronDown, Loader2, Heart, Archive, Scale,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -57,6 +57,7 @@ const navGroups: NavGroup[] = [
   {
     label: 'Documents',
     items: [
+      { href: '/cases', label: 'Cases & Summons', icon: Scale },
       { href: '/generator', label: 'Generator', icon: FileSearch },
       { href: '/templates', label: 'Templates', icon: FileText },
       { href: '/officials', label: 'Officials', icon: Landmark },

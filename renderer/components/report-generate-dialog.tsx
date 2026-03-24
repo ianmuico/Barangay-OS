@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { FileDown, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -17,12 +19,24 @@ interface ReportGenerateDialogProps {
   resident: Resident;
 }
 
+// Convert field_name to readable label
+function fieldToLabel(field: string): string {
+  return field
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export function ReportGenerateDialog({ open, onClose, resident }: ReportGenerateDialogProps) {
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [generatedReports, setGeneratedReports] = useState<{ templateName: string; html: string }[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [generating, setGenerating] = useState(false);
+
+  // Input fields state
+  const [inputFields, setInputFields] = useState<string[]>([]);
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [showInputs, setShowInputs] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -31,6 +45,9 @@ export function ReportGenerateDialog({ open, onClose, resident }: ReportGenerate
       api.getTemplates().then(setTemplates);
       setGeneratedReports([]);
       setSelectedIds(new Set());
+      setInputFields([]);
+      setInputValues({});
+      setShowInputs(false);
     }
   }, [open]);
 
@@ -43,15 +60,38 @@ export function ReportGenerateDialog({ open, onClose, resident }: ReportGenerate
     });
   };
 
-  const handleGenerate = async () => {
+  // Check for input fields when user clicks generate
+  const handlePrepareGenerate = async () => {
     if (selectedIds.size === 0) { toast.error('Select at least one template'); return; }
+    const api = getAPI();
+    if (!api) return;
+
+    // Collect all input fields from selected templates
+    const allFields: string[] = [];
+    for (const id of Array.from(selectedIds)) {
+      const fields = await api.getInputFields(id);
+      for (const f of fields) {
+        if (!allFields.includes(f)) allFields.push(f);
+      }
+    }
+
+    if (allFields.length > 0) {
+      setInputFields(allFields);
+      setInputValues({});
+      setShowInputs(true);
+    } else {
+      await doGenerate({});
+    }
+  };
+
+  const doGenerate = async (values: Record<string, string>) => {
     const api = getAPI();
     if (!api) return;
     setGenerating(true);
     try {
       const ids = Array.from(selectedIds);
       if (ids.length === 1) {
-        const result = await api.generateReport(ids[0], resident.id);
+        const result = await api.generateReport(ids[0], resident.id, values);
         if (result.success && result.html) {
           const tpl = templates.find(t => t.id === ids[0]);
           setGeneratedReports([{ templateName: tpl?.name || 'Report', html: result.html }]);
@@ -59,13 +99,20 @@ export function ReportGenerateDialog({ open, onClose, resident }: ReportGenerate
           toast.success('Report generated');
         }
       } else {
-        const result = await api.generateMultiReport(ids, resident.id);
-        if (result.success && result.reports) {
-          setGeneratedReports(result.reports);
-          setActiveIdx(0);
-          toast.success(`${result.reports.length} reports generated`);
+        // For multi-template, generate each with the same input values
+        const results: { templateName: string; html: string }[] = [];
+        for (const tid of ids) {
+          const result = await api.generateReport(tid, resident.id, values);
+          if (result.success && result.html) {
+            const tpl = templates.find(t => t.id === tid);
+            results.push({ templateName: tpl?.name || 'Report', html: result.html });
+          }
         }
+        setGeneratedReports(results);
+        setActiveIdx(0);
+        toast.success(`${results.length} reports generated`);
       }
+      setShowInputs(false);
     } finally {
       setGenerating(false);
     }
@@ -112,7 +159,33 @@ export function ReportGenerateDialog({ open, onClose, resident }: ReportGenerate
         </DialogHeader>
 
         <div className="space-y-4">
-          {generatedReports.length === 0 ? (
+          {/* Input fields step */}
+          {showInputs ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Fill in the custom fields for this report:
+              </p>
+              <div className="space-y-3">
+                {inputFields.map((field) => (
+                  <div key={field} className="space-y-1">
+                    <Label className="text-xs">{fieldToLabel(field)}</Label>
+                    <Input
+                      value={inputValues[field] || ''}
+                      onChange={(e) => setInputValues(prev => ({ ...prev, [field]: e.target.value }))}
+                      placeholder={`Enter ${fieldToLabel(field).toLowerCase()}`}
+                      className="h-9"
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowInputs(false)}>Back</Button>
+                <Button onClick={() => doGenerate(inputValues)} disabled={generating} className="flex-1">
+                  {generating ? 'Generating...' : 'Generate Report'}
+                </Button>
+              </div>
+            </div>
+          ) : generatedReports.length === 0 ? (
             <>
               <ScrollArea className="h-48 rounded-md border">
                 <div className="p-2 space-y-1">
@@ -124,7 +197,7 @@ export function ReportGenerateDialog({ open, onClose, resident }: ReportGenerate
                   ))}
                 </div>
               </ScrollArea>
-              <Button onClick={handleGenerate} disabled={generating || selectedIds.size === 0} className="w-full">
+              <Button onClick={handlePrepareGenerate} disabled={generating || selectedIds.size === 0} className="w-full">
                 {generating ? 'Generating...' : `Generate ${selectedIds.size > 1 ? selectedIds.size + ' Reports' : 'Report'}`}
               </Button>
             </>

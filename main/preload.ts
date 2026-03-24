@@ -142,8 +142,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteTemplate: (id: number) => ipcRenderer.invoke('db:templates:delete', id),
 
   // Reports
-  generateReport: (templateId: number, residentId: number) =>
-    ipcRenderer.invoke('reports:generate', templateId, residentId),
+  getInputFields: (templateId: number) =>
+    ipcRenderer.invoke('reports:getInputFields', templateId),
+  generateReport: (templateId: number, residentId: number, inputValues?: Record<string, string>) =>
+    ipcRenderer.invoke('reports:generate', templateId, residentId, inputValues),
   exportPDF: (html: string, filename: string) =>
     ipcRenderer.invoke('reports:exportPDF', html, filename),
   printReport: (html: string) =>
@@ -195,6 +197,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startServer: (port: number) => ipcRenderer.invoke('server:start', port),
   stopServer: () => ipcRenderer.invoke('server:stop'),
   getServerStatus: () => ipcRenderer.invoke('server:status'),
+
+  // Cases & Summons
+  getCases: (params?: { search?: string; status?: string }) => ipcRenderer.invoke('db:cases:list', params),
+  getCase: (id: number) => ipcRenderer.invoke('db:cases:get', id),
+  createCase: (data: { case_type: string; complainant_id?: number | null; respondent_id?: number | null; description?: string; filed_date?: string }) => ipcRenderer.invoke('db:cases:create', data),
+  updateCase: (id: number, data: Record<string, unknown>) => ipcRenderer.invoke('db:cases:update', id, data),
+  deleteCase: (id: number) => ipcRenderer.invoke('db:cases:delete', id),
+  getSummons: (caseId: number) => ipcRenderer.invoke('db:summons:list', caseId),
+  createSummon: (data: { case_id: number; summoned_resident_id?: number | null; summon_date: string; summon_time?: string; notes?: string }) => ipcRenderer.invoke('db:summons:create', data),
+  updateSummon: (id: number, data: Record<string, unknown>) => ipcRenderer.invoke('db:summons:update', id, data),
+  deleteSummon: (id: number) => ipcRenderer.invoke('db:summons:delete', id),
 
   // CSV Import / Export
   getCSVHeaders: (filePath: string) => ipcRenderer.invoke('db:import:getCSVHeaders', filePath),
