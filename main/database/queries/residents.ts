@@ -82,9 +82,23 @@ export function listResidents(params: ResidentQueryParams = {}): PaginatedResult
   }
 
   if (search) {
-    conditions.push("(first_name LIKE ? OR last_name LIKE ? OR middle_name LIKE ? OR address LIKE ? OR purok LIKE ?)");
-    const searchTerm = `%${search}%`;
-    values.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+    // Split search into words so "Juan Santos" matches first_name=Juan + last_name=Santos
+    const words = search.trim().split(/\s+/).filter(Boolean);
+    if (words.length > 1) {
+      // Each word must match at least one name/address field
+      const wordConditions = words.map(() =>
+        "(first_name LIKE ? OR last_name LIKE ? OR middle_name LIKE ? OR address LIKE ? OR purok LIKE ?)"
+      );
+      conditions.push(`(${wordConditions.join(' AND ')})`);
+      for (const word of words) {
+        const term = `%${word}%`;
+        values.push(term, term, term, term, term);
+      }
+    } else {
+      conditions.push("(first_name LIKE ? OR last_name LIKE ? OR middle_name LIKE ? OR address LIKE ? OR purok LIKE ?)");
+      const searchTerm = `%${search}%`;
+      values.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+    }
   }
 
   if (is_indigent !== undefined) {
@@ -149,6 +163,27 @@ export function getResidentById(id: number): (Resident & { age: number }) | unde
 
 export function searchResidents(query: string, limit: number = 20): (Resident & { age: number })[] {
   const db = getDb();
+  const words = query.trim().split(/\s+/).filter(Boolean);
+
+  if (words.length > 1) {
+    // Multi-word: each word must match at least one name field
+    const wordConditions = words.map(() => "(first_name LIKE ? OR last_name LIKE ? OR middle_name LIKE ?)");
+    const whereClause = wordConditions.join(' AND ');
+    const values: string[] = [];
+    for (const word of words) {
+      const term = `%${word}%`;
+      values.push(term, term, term);
+    }
+    return db.prepare(`
+      SELECT *,
+        CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) as age
+      FROM residents
+      WHERE ${whereClause}
+      ORDER BY last_name, first_name
+      LIMIT ?
+    `).all(...values, limit) as (Resident & { age: number })[];
+  }
+
   const searchTerm = `%${query}%`;
   return db.prepare(`
     SELECT *,
