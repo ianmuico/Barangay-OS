@@ -29,6 +29,27 @@ function formatDate(date: Date): string {
 }
 
 function buildHeaderHtml(): string {
+  // Check if user has a custom header template stored
+  const customHeader = getSetting('header_template');
+  if (customHeader) {
+    // Resolve settings variables in the custom header
+    const barangayName = getSetting('barangay_name') || '';
+    const municipality = getSetting('municipality') || '';
+    const province = getSetting('province') || '';
+    const logoBase64 = getLogoBase64();
+    let html = customHeader;
+    html = html.replace(/\{\{barangay\}\}/g, barangayName);
+    html = html.replace(/\{\{municipality\}\}/g, municipality);
+    html = html.replace(/\{\{province\}\}/g, province);
+    if (logoBase64) {
+      html = html.replace(/\{\{logo\}\}/g, `<img src="${logoBase64}" style="width:70px;height:70px;object-fit:contain;" />`);
+    } else {
+      html = html.replace(/\{\{logo\}\}/g, '');
+    }
+    return html;
+  }
+
+  // Default header matching the actual report format
   const barangayName = getSetting('barangay_name') || 'BARANGAY';
   const municipality = getSetting('municipality') || '';
   const province = getSetting('province') || '';
@@ -38,17 +59,19 @@ function buildHeaderHtml(): string {
     ? `<img src="${logoBase64}" style="width:70px;height:70px;object-fit:contain;" />`
     : '';
 
-  return `<div style="text-align:center;margin-bottom:20px;">
-    <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
-      ${logoImg}
-      <div>
-        <p style="margin:0;font-size:10pt;">Republic of the Philippines</p>
-        <p style="margin:0;font-size:10pt;">${province}</p>
-        <p style="margin:0;font-size:10pt;">Municipality of ${municipality}</p>
-        <p style="margin:4px 0 0;font-size:14pt;font-weight:bold;letter-spacing:1px;">${barangayName.toUpperCase()}</p>
-      </div>
-      ${logoImg ? '<div style="width:70px;"></div>' : ''}
-    </div>
+  return `<div style="text-align:center;margin-bottom:16px;">
+    <table style="width:100%;border:none;border-collapse:collapse;">
+      <tr>
+        <td style="width:80px;text-align:center;border:none;padding:0;vertical-align:middle;">${logoImg}</td>
+        <td style="text-align:center;border:none;padding:0;vertical-align:middle;">
+          <p style="margin:0;font-size:10pt;">Republic of the Philippines</p>
+          <p style="margin:0;font-size:10pt;">Province of ${province}</p>
+          <p style="margin:0;font-size:10pt;">Municipality of ${municipality}</p>
+          <p style="margin:2px 0 0;font-size:13pt;font-weight:bold;">${barangayName}</p>
+        </td>
+        <td style="width:80px;border:none;padding:0;"></td>
+      </tr>
+    </table>
   </div>`;
 }
 

@@ -256,13 +256,13 @@ export default function TemplatesPage() {
 
       {/* ═══ Report Template Preview ═══ */}
       <Dialog open={!!previewTemplate} onOpenChange={() => setPreviewTemplate(null)}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-[960px] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Preview: {previewTemplate?.name}</DialogTitle>
             <DialogDescription>Variables will be replaced with resident data when generating.</DialogDescription>
           </DialogHeader>
-          <div className="bg-muted/40 p-6 rounded-md overflow-auto">
-            <div className="mx-auto max-w-[700px] min-h-[600px] bg-white text-black rounded shadow-md p-[60px]" style={{ fontFamily: "'Times New Roman', serif", fontSize: '12pt', lineHeight: 1.6 }}>
+          <div className="bg-neutral-100 dark:bg-neutral-900 p-6 rounded-md overflow-auto max-h-[70vh]">
+            <div className="mx-auto bg-white text-black border border-neutral-300 shadow-sm" style={{ width: '794px', minHeight: '1123px', padding: '96px 72px', fontFamily: "'Times New Roman', Times, serif", fontSize: '12pt', lineHeight: 1.6 }}>
               {previewTemplate && <div dangerouslySetInnerHTML={{ __html: previewTemplate.content_html }} />}
             </div>
           </div>
@@ -272,7 +272,7 @@ export default function TemplatesPage() {
 
       {/* ═══ Report Template Edit ═══ */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-[1050px] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editTemplate ? 'Edit Template' : 'New Template'}</DialogTitle>
             <DialogDescription>Use the editor to create your template. Insert variables to auto-fill resident data.</DialogDescription>
@@ -293,13 +293,13 @@ export default function TemplatesPage() {
 
       {/* ═══ List Header Preview ═══ */}
       <Dialog open={!!previewHeader} onOpenChange={() => setPreviewHeader(null)}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-[960px] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Preview: {previewHeader?.name}</DialogTitle>
             <DialogDescription>This header appears at the top of printed resident lists.</DialogDescription>
           </DialogHeader>
-          <div className="bg-muted/40 p-6 rounded-md overflow-auto">
-            <div className="mx-auto max-w-[700px] min-h-[200px] bg-white text-black rounded shadow-md p-[60px]" style={{ fontFamily: "'Times New Roman', serif", fontSize: '12pt', lineHeight: 1.6 }}>
+          <div className="bg-neutral-100 dark:bg-neutral-900 p-6 rounded-md overflow-auto max-h-[60vh]">
+            <div className="mx-auto bg-white text-black border border-neutral-300 shadow-sm" style={{ width: '794px', minHeight: '300px', padding: '96px 72px', fontFamily: "'Times New Roman', Times, serif", fontSize: '12pt', lineHeight: 1.6 }}>
               {previewHeader && <div dangerouslySetInnerHTML={{ __html: previewHeader.content_html }} />}
             </div>
           </div>
@@ -309,7 +309,7 @@ export default function TemplatesPage() {
 
       {/* ═══ List Header Edit ═══ */}
       <Dialog open={headerEditOpen} onOpenChange={setHeaderEditOpen}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-[1050px] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingHeader ? 'Edit List Header' : 'New List Header'}</DialogTitle>
             <DialogDescription>Design the header that appears at the top of printed resident lists.</DialogDescription>

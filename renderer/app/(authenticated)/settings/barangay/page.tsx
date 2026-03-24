@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Upload, X, ImageIcon } from 'lucide-react';
+import { Upload, X, ImageIcon, FileText } from 'lucide-react';
+import { TemplateEditor } from '@/components/template-editor';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -140,6 +141,40 @@ export default function BarangaySettingsPage() {
           </CardContent>
         </Card>
       </div>
+      {/* Report Header Template */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Report Header Template
+          </CardTitle>
+          <CardDescription>
+            Customize the letterhead that appears at the top of certificates and reports when using the {'{{header}}'} tag.
+            Use {'{{barangay}}'}, {'{{municipality}}'}, {'{{province}}'}, and {'{{logo}}'} to auto-fill your barangay details.
+            Leave empty to use the default header.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <TemplateEditor
+            key="header-editor"
+            content={settings.header_template || ''}
+            onChange={(html) => update('header_template', html)}
+          />
+          <div className="flex items-center gap-3">
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? 'Saving...' : 'Save Header'}
+            </Button>
+            {settings.header_template && (
+              <Button variant="outline" onClick={() => {
+                update('header_template', '');
+                toast.success('Header reset to default');
+              }}>
+                Reset to Default
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

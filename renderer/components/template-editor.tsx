@@ -80,6 +80,7 @@ export function TemplateEditor({ content, onChange }: TemplateEditorProps) {
 
   return (
     <div className="rounded-md border">
+      {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-1 border-b p-2">
         <ToolbarButton onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive('bold')} title="Bold">
           <Bold className="h-4 w-4" />
@@ -163,21 +164,25 @@ export function TemplateEditor({ content, onChange }: TemplateEditorProps) {
         </Select>
       </div>
 
-      {/* A4 paper-like editor area */}
-      <div className="bg-muted/40 p-6 overflow-auto">
-        <EditorContent
-          editor={editor}
-          className={cn(
-            'mx-auto max-w-[700px] min-h-[600px] bg-white text-black rounded shadow-md',
-            '[&_.ProseMirror]:min-h-[600px] [&_.ProseMirror]:outline-none [&_.ProseMirror]:p-[60px]',
-            '[&_.ProseMirror]:font-serif [&_.ProseMirror]:text-[12pt] [&_.ProseMirror]:leading-[1.6]',
-            '[&_.ProseMirror_h1]:font-serif [&_.ProseMirror_h2]:font-serif',
-            '[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-gray-400',
-          )}
-          style={{
-            fontFamily: "'Times New Roman', serif",
-          }}
-        />
+      {/* A4 paper editor area */}
+      <div className="bg-neutral-100 dark:bg-neutral-900 p-8 overflow-auto max-h-[70vh]">
+        <div className="mx-auto" style={{ width: '794px' }}>
+          <EditorContent
+            editor={editor}
+            className={cn(
+              'bg-white border border-neutral-300 shadow-sm',
+              '[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[1123px]',
+              '[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-gray-400',
+            )}
+            style={{
+              padding: '96px 72px',
+              fontFamily: "'Times New Roman', Times, serif",
+              fontSize: '12pt',
+              lineHeight: 1.6,
+              color: '#000',
+            }}
+          />
+        </div>
       </div>
     </div>
   );

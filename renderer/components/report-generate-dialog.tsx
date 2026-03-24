@@ -152,7 +152,7 @@ export function ReportGenerateDialog({ open, onClose, resident }: ReportGenerate
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-[960px] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Generate Reports for {fullName}</DialogTitle>
           <DialogDescription>Select one or more templates to generate.</DialogDescription>
@@ -224,8 +224,8 @@ export function ReportGenerateDialog({ open, onClose, resident }: ReportGenerate
                 </div>
               </div>
               {activeReport && (
-                <div className="bg-muted/40 p-4 rounded-md overflow-auto max-h-[450px]">
-                  <div className="mx-auto max-w-[700px] min-h-[500px] bg-white text-black rounded shadow-md p-[60px]" style={{ fontFamily: "'Times New Roman', serif", fontSize: '12pt', lineHeight: 1.6 }}>
+                <div className="bg-neutral-100 dark:bg-neutral-900 p-6 rounded-md overflow-auto max-h-[60vh]">
+                  <div className="mx-auto bg-white text-black border border-neutral-300 shadow-sm" style={{ width: '794px', minHeight: '1123px', padding: '96px 72px', fontFamily: "'Times New Roman', Times, serif", fontSize: '12pt', lineHeight: 1.6 }}>
                     <div dangerouslySetInnerHTML={{ __html: activeReport.html }} />
                   </div>
                 </div>
