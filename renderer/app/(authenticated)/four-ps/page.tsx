@@ -2,67 +2,58 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { FileText, Printer } from 'lucide-react';
+import { FileText, Printer, Download } from 'lucide-react';
 import { DataTable } from '@/components/data-table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TableSkeleton } from '@/components/skeletons';
 import { ReportGenerateDialog } from '@/components/report-generate-dialog';
-import { CategoryPrintDialog, SENIOR_GROUP_OPTIONS } from '@/components/category-print-dialog';
 import { PageHeader } from '@/components/page-header';
 import { usePageSearch } from '@/hooks/use-page-search';
 import { getAPI, type Resident, type PaginatedResult } from '@/lib/ipc';
 import { cachedFetch } from '@/lib/cache';
+import { toast } from 'sonner';
 
-export default function SeniorsPage() {
+export default function FourPsPage() {
   const [result, setResult] = useState<PaginatedResult<Resident> | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [loaded, setLoaded] = useState(false);
   const [reportResident, setReportResident] = useState<Resident | null>(null);
-  const [printOpen, setPrintOpen] = useState(false);
 
-  usePageSearch(search, setSearch, 'Search senior citizens...');
+  usePageSearch(search, setSearch, 'Search 4Ps beneficiaries...');
 
-  const fetchSeniors = useCallback(async () => {
+  const fetch4Ps = useCallback(async () => {
     const api = getAPI();
     if (!api) return;
-    const data = await cachedFetch(`seniors:${search}:${page}`, () =>
-      api.getResidents({ search, page, limit: 50, is_senior: true })
+    const data = await cachedFetch(`fourps:${search}:${page}`, () =>
+      api.getResidents({ search, page, limit: 50, is_4ps: true })
     );
     setResult(data);
     setLoaded(true);
   }, [search, page]);
 
-  useEffect(() => {
-    fetchSeniors();
-  }, [fetchSeniors]);
+  useEffect(() => { fetch4Ps(); }, [fetch4Ps]);
+  useEffect(() => { setPage(1); }, [search]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
-
-  const filterParams = useMemo(() => ({ is_senior: true }), []);
+  const handleExport = async () => {
+    const api = getAPI();
+    if (!api) return;
+    const result = await api.exportResidents({ is_4ps: true });
+    if (result.success) {
+      toast.success(`Exported to ${result.path}`);
+    } else {
+      toast.error(result.error || 'Export failed');
+    }
+  };
 
   const columns: ColumnDef<Resident>[] = [
     { accessorKey: 'last_name', header: 'Last Name' },
     { accessorKey: 'first_name', header: 'First Name' },
-    {
-      accessorKey: 'age',
-      header: 'Age',
-      cell: ({ row }) => row.original.age ?? '-',
-    },
+    { accessorKey: 'age', header: 'Age', cell: ({ row }) => row.original.age ?? '-' },
     { accessorKey: 'gender', header: 'Gender' },
-    {
-      accessorKey: 'purok',
-      header: 'Purok',
-      cell: ({ row }) => row.original.purok || '-',
-    },
-    {
-      accessorKey: 'contact_number',
-      header: 'Contact',
-      cell: ({ row }) => row.original.contact_number || '-',
-    },
+    { accessorKey: 'purok', header: 'Purok', cell: ({ row }) => row.original.purok || '-' },
+    { accessorKey: 'contact_number', header: 'Contact', cell: ({ row }) => row.original.contact_number || '-' },
     {
       accessorKey: 'is_indigent',
       header: 'Indigent',
@@ -77,12 +68,7 @@ export default function SeniorsPage() {
       id: 'actions',
       header: 'Actions',
       cell: ({ row }) => (
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setReportResident(row.original)}
-          title="Generate Report"
-        >
+        <Button variant="ghost" size="icon" onClick={() => setReportResident(row.original)} title="Generate Report">
           <FileText className="h-4 w-4" />
         </Button>
       ),
@@ -92,10 +78,10 @@ export default function SeniorsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <PageHeader title="Senior Citizens" description="Residents aged 60 and above" />
-        <Button variant="outline" onClick={() => setPrintOpen(true)}>
-          <Printer className="mr-2 h-4 w-4" />
-          Print List
+        <PageHeader title="4Ps Beneficiaries" description="Pantawid Pamilyang Pilipino Program beneficiaries" />
+        <Button variant="outline" onClick={handleExport}>
+          <Download className="mr-2 h-4 w-4" />
+          Export CSV
         </Button>
       </div>
 
@@ -105,7 +91,7 @@ export default function SeniorsPage() {
         <DataTable
           columns={columns}
           data={result?.data || []}
-          searchPlaceholder="Search senior citizens..."
+          searchPlaceholder="Search 4Ps beneficiaries..."
           searchValue={search}
           onSearchChange={setSearch}
           page={page}
@@ -122,15 +108,6 @@ export default function SeniorsPage() {
           resident={reportResident}
         />
       )}
-
-      <CategoryPrintDialog
-        open={printOpen}
-        onClose={() => setPrintOpen(false)}
-        title="Senior Citizens"
-        filterParams={filterParams}
-        groupOptions={SENIOR_GROUP_OPTIONS}
-        extraColumns={[{ key: 'is_indigent', label: 'Indigent' }]}
-      />
     </div>
   );
 }

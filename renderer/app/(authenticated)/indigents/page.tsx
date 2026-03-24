@@ -49,7 +49,7 @@ export default function IndigentsPage() {
     {
       accessorKey: 'age',
       header: 'Age',
-      cell: ({ row }) => (row.original as any).age ?? '-',
+      cell: ({ row }) => row.original.age ?? '-',
     },
     { accessorKey: 'gender', header: 'Gender' },
     {

@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (result.success && result.user) {
       setUser(result.user);
     }
-    return result;
+    return result as { success: boolean; user?: User; error?: string; mustChangePassword?: boolean };
   };
 
   const logout = async () => {

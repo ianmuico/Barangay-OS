@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { Plus, Pencil, Trash2, FileText, Printer } from 'lucide-react';
+import { Plus, Pencil, Trash2, FileText, Printer, Upload, Download } from 'lucide-react';
 import { DataTable } from '@/components/data-table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +26,7 @@ import { getAPI, type Resident, type PaginatedResult } from '@/lib/ipc';
 import { cachedFetch, invalidateCache } from '@/lib/cache';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/empty-state';
+import { CSVImportDialog } from '@/components/csv-import-dialog';
 import { useTranslation } from 'react-i18next';
 
 export default function ResidentsPage() {
@@ -39,6 +40,7 @@ export default function ResidentsPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [reportResident, setReportResident] = useState<Resident | null>(null);
   const [printListOpen, setPrintListOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   usePageSearch(search, setSearch, 'Search residents...');
 
@@ -106,7 +108,7 @@ export default function ResidentsPage() {
     {
       accessorKey: 'age',
       header: 'Age',
-      cell: ({ row }) => (row.original as any).age ?? '-',
+      cell: ({ row }) => row.original.age ?? '-',
     },
     {
       accessorKey: 'gender',
@@ -193,6 +195,20 @@ export default function ResidentsPage() {
           total={result?.total}
           toolbar={
             <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload className="mr-2 h-4 w-4" />
+                Import
+              </Button>
+              <Button variant="outline" onClick={async () => {
+                const api = getAPI();
+                if (!api) return;
+                const result = await api.exportResidents({});
+                if (result.success) toast.success(`Exported to ${result.path}`);
+                else toast.error(result.error || 'Export failed');
+              }}>
+                <Download className="mr-2 h-4 w-4" />
+                Export
+              </Button>
               <Button variant="outline" onClick={() => setPrintListOpen(true)}>
                 <Printer className="mr-2 h-4 w-4" />
                 Print List
@@ -239,6 +255,16 @@ export default function ResidentsPage() {
       )}
 
       <PrintListDialog open={printListOpen} onClose={() => setPrintListOpen(false)} />
+
+      <CSVImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImportComplete={() => {
+          invalidateCache('residents');
+          invalidateCache('dashboard');
+          fetchResidents();
+        }}
+      />
     </div>
   );
 }

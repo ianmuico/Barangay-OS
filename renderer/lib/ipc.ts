@@ -85,7 +85,9 @@ export interface ResidentListParams {
   is_indigent?: boolean;
   is_senior?: boolean;
   is_youth?: boolean;
+  is_4ps?: boolean;
   gender?: string;
+  status?: string; // 'living' | 'deceased' | 'all'
 }
 
 export interface Household {
@@ -157,6 +159,33 @@ export interface DashboardStats {
   totalSeniors: number;
   totalIndigents: number;
   totalYouth: number;
+  total4Ps: number;
+}
+
+export interface ImportResult {
+  batchId: number;
+  totalImported: number;
+  totalSkipped: number;
+  totalErrors: number;
+  errors: { row: number; field: string; message: string }[];
+  duplicates: { type: 'exact' | 'fuzzy'; existingResident: { id: number; first_name: string; last_name: string; birth_date: string; purok: string | null }; rowIndex: number }[];
+}
+
+export interface ImportBatch {
+  id: number;
+  filename: string | null;
+  total_imported: number;
+  total_skipped: number;
+  total_errors: number;
+  imported_by: number | null;
+  status: string;
+  created_at: string;
+}
+
+export interface SystemField {
+  key: string;
+  label: string;
+  required: boolean;
 }
 
 export interface DetailedStats {
@@ -325,8 +354,22 @@ export interface ElectronAPI {
   getDetailedStats: () => Promise<DetailedStats>;
   getAuditLog: (limit: number) => Promise<AuditEntry[]>;
 
+  // CSV Import / Export
+  getCSVHeaders: (filePath: string) => Promise<string[]>;
+  getSystemFields: () => Promise<SystemField[]>;
+  importCSV: (options: { filePath: string; mapping: Record<string, string>; dateFormat: string; skipDuplicates: boolean }) => Promise<ImportResult>;
+  rollbackImport: (batchId: number) => Promise<{ success: boolean; deletedCount?: number; error?: string }>;
+  downloadCSVTemplate: () => Promise<{ success: boolean; path?: string }>;
+  exportResidents: (params: { is_senior?: boolean; is_youth?: boolean; is_indigent?: boolean; is_4ps?: boolean; status?: string }) => Promise<{ success: boolean; path?: string; error?: string }>;
+  listImportBatches: () => Promise<ImportBatch[]>;
+
+  // Error Log Export
+  exportLogFile: () => Promise<{ success: boolean; path?: string; error?: string }>;
+
+  // Danger Zone
   wipeDatabase: (pin: string) => Promise<{ success: boolean; error?: string }>;
   fillTestData: (pin: string) => Promise<{ success: boolean; error?: string }>;
+  setDangerZonePin: (currentPin: string, newPin: string) => Promise<{ success: boolean; error?: string }>;
 
   backupDatabase: () => Promise<{ success: boolean; path?: string; error?: string }>;
   restoreDatabase: () => Promise<{ success: boolean; error?: string }>;

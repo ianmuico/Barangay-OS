@@ -196,9 +196,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopServer: () => ipcRenderer.invoke('server:stop'),
   getServerStatus: () => ipcRenderer.invoke('server:status'),
 
+  // CSV Import / Export
+  getCSVHeaders: (filePath: string) => ipcRenderer.invoke('db:import:getCSVHeaders', filePath),
+  getSystemFields: () => ipcRenderer.invoke('db:import:getSystemFields'),
+  importCSV: (options: {
+    filePath: string;
+    mapping: Record<string, string>;
+    dateFormat: string;
+    skipDuplicates: boolean;
+  }) => ipcRenderer.invoke('db:import:run', options),
+  rollbackImport: (batchId: number) => ipcRenderer.invoke('db:import:rollback', batchId),
+  downloadCSVTemplate: () => ipcRenderer.invoke('db:import:downloadTemplate'),
+  exportResidents: (params: {
+    is_senior?: boolean;
+    is_youth?: boolean;
+    is_indigent?: boolean;
+    is_4ps?: boolean;
+    status?: string;
+  }) => ipcRenderer.invoke('db:export:residents', params),
+  listImportBatches: () => ipcRenderer.invoke('db:import:listBatches'),
+
+  // Error Log Export
+  exportLogFile: () => ipcRenderer.invoke('db:logs:export'),
+
   // Danger Zone
   wipeDatabase: (pin: string) => ipcRenderer.invoke('db:dangerzone:wipe', pin),
   fillTestData: (pin: string) => ipcRenderer.invoke('db:dangerzone:fillTestData', pin),
+  setDangerZonePin: (currentPin: string, newPin: string) => ipcRenderer.invoke('db:dangerzone:setPin', currentPin, newPin),
 
   // File dialogs
   selectFile: (options: FileDialogOptions) => ipcRenderer.invoke('dialog:openFile', options),

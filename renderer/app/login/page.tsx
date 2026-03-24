@@ -6,7 +6,10 @@ import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { getAPI } from '@/lib/ipc';
 import { toast } from 'sonner';
+import { Lock } from 'lucide-react';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -14,6 +17,13 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
+
+  // Forced password change state
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [loggedInUserId, setLoggedInUserId] = useState<number | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,8 +36,15 @@ export default function LoginPage() {
     try {
       const result = await login(username, password);
       if (result.success) {
-        toast.success('Login successful');
-        router.replace('/dashboard');
+        // Check if forced password change is needed
+        const resultAny = result as any;
+        if (resultAny.mustChangePassword) {
+          setLoggedInUserId(resultAny.user?.id || 1);
+          setShowPasswordChange(true);
+        } else {
+          toast.success('Login successful');
+          router.replace('/dashboard');
+        }
       } else {
         toast.error(result.error || 'Login failed');
       }
@@ -35,6 +52,36 @@ export default function LoginPage() {
       toast.error('An error occurred during login');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    if (newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+
+    const api = getAPI();
+    if (!api || !loggedInUserId) return;
+
+    setChangingPassword(true);
+    try {
+      const result = await api.updatePassword(loggedInUserId, 'admin123', newPassword);
+      if (result.success) {
+        toast.success('Password changed successfully');
+        setShowPasswordChange(false);
+        router.replace('/dashboard');
+      } else {
+        toast.error(result.error || 'Failed to change password');
+      }
+    } catch {
+      toast.error('An error occurred');
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -114,6 +161,52 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      {/* Forced Password Change Dialog */}
+      <Dialog open={showPasswordChange} onOpenChange={() => {}}>
+        <DialogContent className="max-w-sm" hideClose>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5 text-primary" />
+              Change Default Password
+            </DialogTitle>
+            <DialogDescription>
+              You are using the default password. Please change it before continuing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">New Password</Label>
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="At least 6 characters"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Confirm Password</Label>
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter password"
+              />
+              {confirmPassword && newPassword !== confirmPassword && (
+                <p className="text-xs text-destructive">Passwords do not match</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={handlePasswordChange}
+              disabled={changingPassword || newPassword.length < 6 || newPassword !== confirmPassword}
+            >
+              {changingPassword ? 'Changing...' : 'Change Password'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

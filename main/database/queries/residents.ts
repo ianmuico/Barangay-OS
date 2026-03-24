@@ -43,7 +43,9 @@ export interface ResidentQueryParams {
   is_indigent?: boolean;
   is_senior?: boolean;
   is_youth?: boolean;
+  is_4ps?: boolean;
   gender?: string;
+  status?: string; // 'living' | 'deceased' | 'all' — defaults to 'living'
 }
 
 export interface PaginatedResult<T> {
@@ -65,11 +67,19 @@ export function listResidents(params: ResidentQueryParams = {}): PaginatedResult
     is_indigent,
     is_senior,
     is_youth,
+    is_4ps,
     gender,
+    status = 'living',
   } = params;
 
   const conditions: string[] = [];
-  const values: any[] = [];
+  const values: (string | number)[] = [];
+
+  // Filter by status (living by default)
+  if (status !== 'all') {
+    conditions.push('status = ?');
+    values.push(status);
+  }
 
   if (search) {
     conditions.push("(first_name LIKE ? OR last_name LIKE ? OR middle_name LIKE ? OR address LIKE ? OR purok LIKE ?)");
@@ -80,6 +90,10 @@ export function listResidents(params: ResidentQueryParams = {}): PaginatedResult
   if (is_indigent !== undefined) {
     conditions.push('is_indigent = ?');
     values.push(is_indigent ? 1 : 0);
+  }
+
+  if (is_4ps) {
+    conditions.push('is_4ps = 1');
   }
 
   if (is_senior) {
@@ -242,22 +256,27 @@ export function deleteResident(id: number): void {
 
 export function getResidentCount(): number {
   const db = getDb();
-  return (db.prepare('SELECT COUNT(*) as count FROM residents').get() as { count: number }).count;
+  return (db.prepare("SELECT COUNT(*) as count FROM residents WHERE status = 'living'").get() as { count: number }).count;
 }
 
 export function getSeniorCount(): number {
   const db = getDb();
-  return (db.prepare("SELECT COUNT(*) as count FROM residents WHERE CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) >= 60").get() as { count: number }).count;
+  return (db.prepare("SELECT COUNT(*) as count FROM residents WHERE status = 'living' AND CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) >= 60").get() as { count: number }).count;
 }
 
 export function getIndigentCount(): number {
   const db = getDb();
-  return (db.prepare('SELECT COUNT(*) as count FROM residents WHERE is_indigent = 1').get() as { count: number }).count;
+  return (db.prepare("SELECT COUNT(*) as count FROM residents WHERE status = 'living' AND is_indigent = 1").get() as { count: number }).count;
 }
 
 export function getYouthCount(): number {
   const db = getDb();
-  return (db.prepare("SELECT COUNT(*) as count FROM residents WHERE CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) BETWEEN 15 AND 30 AND (civil_status IS NULL OR LOWER(civil_status) NOT IN ('married', 'widowed'))").get() as { count: number }).count;
+  return (db.prepare("SELECT COUNT(*) as count FROM residents WHERE status = 'living' AND CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) BETWEEN 15 AND 30 AND (civil_status IS NULL OR LOWER(civil_status) NOT IN ('married', 'widowed'))").get() as { count: number }).count;
+}
+
+export function get4PsCount(): number {
+  const db = getDb();
+  return (db.prepare("SELECT COUNT(*) as count FROM residents WHERE status = 'living' AND is_4ps = 1").get() as { count: number }).count;
 }
 
 export function getPartnerRelationships(): any[] {
@@ -307,7 +326,7 @@ export function removeChildLink(parentId: number, parentGender: string, childId:
 export function getGenderDistribution(): { gender: string; count: number }[] {
   const db = getDb();
   return db.prepare(`
-    SELECT gender, COUNT(*) as count FROM residents GROUP BY gender ORDER BY gender
+    SELECT gender, COUNT(*) as count FROM residents WHERE status = 'living' GROUP BY gender ORDER BY gender
   `).all() as any[];
 }
 
@@ -326,7 +345,7 @@ export function getSeniorAgeBrackets(): { bracket: string; count: number }[] {
     FROM (
       SELECT CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) as age
       FROM residents
-      WHERE CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) >= 60
+      WHERE status = 'living' AND CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) >= 60
     )
     GROUP BY bracket
     ORDER BY bracket
@@ -338,7 +357,7 @@ export function getIndigentsByPurok(): { purok: string; count: number }[] {
   return db.prepare(`
     SELECT COALESCE(purok, 'Unassigned') as purok, COUNT(*) as count
     FROM residents
-    WHERE is_indigent = 1
+    WHERE status = 'living' AND is_indigent = 1
     GROUP BY purok
     ORDER BY purok
   `).all() as any[];
@@ -360,7 +379,7 @@ export function getYouthBreakdown(): { category: string; count: number }[] {
       SELECT CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) as age,
              civil_status
       FROM residents
-      WHERE CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) BETWEEN 15 AND 30
+      WHERE status = 'living' AND CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) BETWEEN 15 AND 30
         AND (civil_status IS NULL OR LOWER(civil_status) NOT IN ('married', 'widowed'))
     )
     GROUP BY category
@@ -380,7 +399,7 @@ export function getYouthByOccupation(): { category: string; count: number }[] {
       END as category,
       COUNT(*) as count
     FROM residents
-    WHERE CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) BETWEEN 15 AND 30
+    WHERE status = 'living' AND CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) BETWEEN 15 AND 30
       AND (civil_status IS NULL OR LOWER(civil_status) NOT IN ('married', 'widowed'))
     GROUP BY category
     ORDER BY category
@@ -392,6 +411,7 @@ export function getResidentsByPurok(): { purok: string; count: number }[] {
   return db.prepare(`
     SELECT COALESCE(purok, 'Unassigned') as purok, COUNT(*) as count
     FROM residents
+    WHERE status = 'living'
     GROUP BY purok
     ORDER BY purok
   `).all() as any[];
@@ -411,6 +431,7 @@ export function getAgeDistribution(): { bracket: string; count: number }[] {
     FROM (
       SELECT CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) as age
       FROM residents
+      WHERE status = 'living'
     )
     GROUP BY bracket
     ORDER BY bracket

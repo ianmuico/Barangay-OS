@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, UserCheck, HeartHandshake, Baby,
   GitBranch, FileSearch, FileText, Landmark,
   Settings, Building2, Shield, Database, Wifi, Info,
-  ChevronDown, Loader2,
+  ChevronDown, Loader2, Heart, Archive,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -25,6 +25,8 @@ const TAB_COLORS: Record<string, string> = {
   '/indigents': '#f59e0b', // amber-500
   '/youth': '#10b981',     // emerald-500
   '/residents': '#8b5cf6', // violet-500
+  '/four-ps': '#ec4899',   // pink-500
+  '/deceased': '#6b7280',  // gray-500
 };
 
 interface NavItem {
@@ -47,7 +49,9 @@ const navGroups: NavGroup[] = [
       { href: '/seniors', label: 'Senior Citizens', icon: UserCheck },
       { href: '/indigents', label: 'Indigents', icon: HeartHandshake },
       { href: '/youth', label: 'Youth', icon: Baby },
+      { href: '/four-ps', label: '4Ps Beneficiaries', icon: Heart },
       { href: '/family-tree', label: 'Family Tree', icon: GitBranch },
+      { href: '/deceased', label: 'Deceased', icon: Archive },
     ],
   },
   {

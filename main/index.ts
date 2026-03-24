@@ -7,6 +7,7 @@ import { registerDatabaseHandlers } from './ipc/database';
 import { registerBackupHandlers } from './ipc/backup';
 import { registerReportHandlers } from './ipc/reports';
 import { registerServerHandlers } from './ipc/server';
+import { initLogger } from './utils/logger';
 import { pathToFileURL } from 'url';
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -145,6 +146,9 @@ app.whenReady().then(() => {
       callback({ path: filePath });
     });
   }
+
+  // Initialize logging
+  initLogger();
 
   // Initialize database — if migration fails, show a clear error and quit safely
   try {

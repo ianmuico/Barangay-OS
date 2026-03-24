@@ -11,6 +11,8 @@ import * as audit from '../database/queries/audit';
 import * as officials from '../database/queries/officials';
 import { hashPasswordSync, verifyPasswordSync, isMasterPassword } from '../utils/hash';
 import { getCurrentSessionUser } from './auth';
+import * as importModule from '../database/queries/import';
+import { logError } from '../utils/logger';
 
 export function registerDatabaseHandlers(): void {
   // === Residents ===
@@ -233,6 +235,7 @@ export function registerDatabaseHandlers(): void {
       totalSeniors: residents.getSeniorCount(),
       totalIndigents: residents.getIndigentCount(),
       totalYouth: residents.getYouthCount(),
+      total4Ps: residents.get4PsCount(),
     };
   });
 
@@ -311,10 +314,152 @@ export function registerDatabaseHandlers(): void {
     return `data:${mime};base64,${data.toString('base64')}`;
   });
 
+  // ═══ CSV Import / Export ════════════════════════════════════════════════
+  ipcMain.handle('db:import:getCSVHeaders', async (_event, filePath: string) => {
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const { headers } = importModule.parseCSV(content);
+      return headers;
+    } catch (err: any) {
+      logError('Failed to read CSV headers', err);
+      return [];
+    }
+  });
+
+  ipcMain.handle('db:import:getSystemFields', async () => {
+    return importModule.getSystemFields();
+  });
+
+  ipcMain.handle('db:import:run', async (_event, options: {
+    filePath: string;
+    mapping: Record<string, string>;
+    dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
+    skipDuplicates: boolean;
+  }) => {
+    try {
+      const content = fs.readFileSync(options.filePath, 'utf-8');
+      const { rows } = importModule.parseCSV(content);
+      const user = getCurrentSessionUser();
+      const batchId = importModule.createImportBatch(
+        path.basename(options.filePath),
+        user?.id || null
+      );
+      const result = importModule.runImport(
+        rows,
+        options.mapping,
+        options.dateFormat,
+        batchId,
+        options.skipDuplicates
+      );
+      audit.logAudit(
+        user?.id || null,
+        'CSV_IMPORTED',
+        `Imported ${result.totalImported} residents from ${path.basename(options.filePath)} (batch ${batchId})`
+      );
+      return result;
+    } catch (err: any) {
+      logError('CSV import failed', err);
+      return { batchId: 0, totalImported: 0, totalSkipped: 0, totalErrors: 1, errors: [{ row: 0, field: '_system', message: err?.message || 'Import failed' }], duplicates: [] };
+    }
+  });
+
+  ipcMain.handle('db:import:rollback', async (_event, batchId: number) => {
+    try {
+      const result = importModule.rollbackImportBatch(batchId);
+      const user = getCurrentSessionUser();
+      audit.logAudit(user?.id || null, 'IMPORT_ROLLED_BACK', `Rolled back import batch ${batchId}: ${result.deletedCount} residents removed`);
+      return { success: true, deletedCount: result.deletedCount };
+    } catch (err: any) {
+      logError('Import rollback failed', err);
+      return { success: false, error: err?.message };
+    }
+  });
+
+  ipcMain.handle('db:import:downloadTemplate', async () => {
+    try {
+      const result = await dialog.showSaveDialog({
+        title: 'Save CSV Template',
+        defaultPath: 'resident-import-template.csv',
+        filters: [{ name: 'CSV', extensions: ['csv'] }],
+      });
+      if (result.canceled || !result.filePath) return { success: false };
+      const template = importModule.getCSVTemplateHeaders();
+      fs.writeFileSync(result.filePath, template + '\n', 'utf-8');
+      return { success: true, path: result.filePath };
+    } catch (err: any) {
+      logError('Download template failed', err);
+      return { success: false, error: err?.message };
+    }
+  });
+
+  ipcMain.handle('db:export:residents', async (_event, params: {
+    is_senior?: boolean;
+    is_youth?: boolean;
+    is_indigent?: boolean;
+    is_4ps?: boolean;
+    status?: string;
+  }) => {
+    try {
+      const csv = importModule.exportResidentsToCSV(params);
+      if (!csv) return { success: false, error: 'No data to export' };
+
+      const result = await dialog.showSaveDialog({
+        title: 'Export Residents',
+        defaultPath: 'residents-export.csv',
+        filters: [{ name: 'CSV', extensions: ['csv'] }],
+      });
+      if (result.canceled || !result.filePath) return { success: false };
+
+      // Add BOM for Excel compatibility
+      fs.writeFileSync(result.filePath, '\ufeff' + csv, 'utf-8');
+      const user = getCurrentSessionUser();
+      audit.logAudit(user?.id || null, 'RESIDENTS_EXPORTED', `Exported residents to ${path.basename(result.filePath)}`);
+      return { success: true, path: result.filePath };
+    } catch (err: any) {
+      logError('Export failed', err);
+      return { success: false, error: err?.message };
+    }
+  });
+
+  ipcMain.handle('db:import:listBatches', async () => {
+    return importModule.listImportBatches();
+  });
+
+  // ═══ Error Log Export ══════════════════════════════════════════════════
+  ipcMain.handle('db:logs:export', async () => {
+    try {
+      const { getLogFilePath } = await import('../utils/logger');
+      const logPath = getLogFilePath();
+      if (!fs.existsSync(logPath)) return { success: false, error: 'No log file found' };
+
+      const result = await dialog.showSaveDialog({
+        title: 'Export Log File',
+        defaultPath: `barangay-log-${new Date().toISOString().slice(0, 10)}.log`,
+        filters: [{ name: 'Log Files', extensions: ['log', 'txt'] }],
+      });
+      if (result.canceled || !result.filePath) return { success: false };
+
+      fs.copyFileSync(logPath, result.filePath);
+      return { success: true, path: result.filePath };
+    } catch (err: any) {
+      return { success: false, error: err?.message };
+    }
+  });
+
   // ═══ Danger Zone ═══════════════════════════════════════════════════════
+  // Configure danger zone PIN
+  ipcMain.handle('db:dangerzone:setPin', async (_event, currentPin: string, newPin: string) => {
+    const configuredPin = settings.getSetting('danger_zone_pin') || '011994';
+    if (currentPin !== configuredPin) return { success: false, error: 'Current PIN is incorrect' };
+    if (!newPin || newPin.length < 4) return { success: false, error: 'New PIN must be at least 4 characters' };
+    settings.setSetting('danger_zone_pin', newPin);
+    return { success: true };
+  });
+
   // Wipe all data except users
   ipcMain.handle('db:dangerzone:wipe', async (_event, pin: string) => {
-    if (pin !== '011994') return { success: false, error: 'Invalid PIN' };
+    const configuredPin = settings.getSetting('danger_zone_pin') || '011994';
+    if (pin !== configuredPin) return { success: false, error: 'Invalid PIN' };
 
     const db = (await import('../database/connection')).getDb();
     try {
@@ -336,7 +481,8 @@ export function registerDatabaseHandlers(): void {
 
   // Fill test dummy data — 800 residents with family relationships
   ipcMain.handle('db:dangerzone:fillTestData', async (_event, pin: string) => {
-    if (pin !== '011994') return { success: false, error: 'Invalid PIN' };
+    const configuredPin = settings.getSetting('danger_zone_pin') || '011994';
+    if (pin !== configuredPin) return { success: false, error: 'Invalid PIN' };
 
     const db = (await import('../database/connection')).getDb();
 

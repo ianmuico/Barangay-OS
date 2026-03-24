@@ -52,7 +52,10 @@ export function registerAuthHandlers(): void {
     };
 
     logAudit(user.id, 'LOGIN', `User ${username} logged in`);
-    return { success: true, user: currentUser };
+
+    // Check if using default password — force change
+    const isDefaultPassword = verifyPasswordSync('admin123', user.password_hash);
+    return { success: true, user: currentUser, mustChangePassword: isDefaultPassword };
   });
 
   ipcMain.handle('auth:logout', async () => {
