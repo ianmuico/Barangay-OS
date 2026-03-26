@@ -87,17 +87,17 @@ export function listResidents(params: ResidentQueryParams = {}): PaginatedResult
     if (words.length > 1) {
       // Each word must match at least one name/address field
       const wordConditions = words.map(() =>
-        "(first_name LIKE ? OR last_name LIKE ? OR middle_name LIKE ? OR address LIKE ? OR purok LIKE ?)"
+        "(first_name LIKE ? OR last_name LIKE ? OR address LIKE ? OR purok LIKE ?)"
       );
       conditions.push(`(${wordConditions.join(' AND ')})`);
       for (const word of words) {
         const term = `%${word}%`;
-        values.push(term, term, term, term, term);
+        values.push(term, term, term, term);
       }
     } else {
-      conditions.push("(first_name LIKE ? OR last_name LIKE ? OR middle_name LIKE ? OR address LIKE ? OR purok LIKE ?)");
+      conditions.push("(first_name LIKE ? OR last_name LIKE ? OR address LIKE ? OR purok LIKE ?)");
       const searchTerm = `%${search}%`;
-      values.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      values.push(searchTerm, searchTerm, searchTerm, searchTerm);
     }
   }
 
@@ -166,13 +166,13 @@ export function searchResidents(query: string, limit: number = 20): (Resident & 
   const words = query.trim().split(/\s+/).filter(Boolean);
 
   if (words.length > 1) {
-    // Multi-word: each word must match at least one name field
-    const wordConditions = words.map(() => "(first_name LIKE ? OR last_name LIKE ? OR middle_name LIKE ?)");
+    // Multi-word: each word must match first_name or last_name
+    const wordConditions = words.map(() => "(first_name LIKE ? OR last_name LIKE ?)");
     const whereClause = wordConditions.join(' AND ');
     const values: string[] = [];
     for (const word of words) {
       const term = `%${word}%`;
-      values.push(term, term, term);
+      values.push(term, term);
     }
     return db.prepare(`
       SELECT *,
@@ -189,10 +189,10 @@ export function searchResidents(query: string, limit: number = 20): (Resident & 
     SELECT *,
       CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) as age
     FROM residents
-    WHERE first_name LIKE ? OR last_name LIKE ? OR middle_name LIKE ?
+    WHERE first_name LIKE ? OR last_name LIKE ?
     ORDER BY last_name, first_name
     LIMIT ?
-  `).all(searchTerm, searchTerm, searchTerm, limit) as (Resident & { age: number })[];
+  `).all(searchTerm, searchTerm, limit) as (Resident & { age: number })[];
 }
 
 export function createResident(data: Partial<Resident> & { first_name: string; last_name: string; birth_date: string; gender: string; civil_status: string }): number {
