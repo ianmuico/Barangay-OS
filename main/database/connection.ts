@@ -69,6 +69,12 @@ export function getDatabasePath(): string {
   return path.join(app.getPath('userData'), 'barangay.db');
 }
 
+export function reseedTemplates(): void {
+  const database = getDb();
+  database.exec(MIGRATION_006);
+  database.exec(MIGRATION_007);
+}
+
 function runMigrations(db: Database.Database): void {
   // Create migrations tracking table
   db.exec(`
@@ -151,6 +157,8 @@ function runInlineMigrations(db: Database.Database): void {
     { name: '005_new_tables_and_fields.sql',       sql: MIGRATION_005 },
     { name: '006_seed_templates.sql',              sql: MIGRATION_006 },
     { name: '007_bisaya_templates.sql',            sql: MIGRATION_007 },
+    { name: '008_indexes.sql',                     sql: MIGRATION_008 },
+    { name: '009_death_date.sql',                  sql: MIGRATION_009 },
     // ─── Add future migrations here ────────────────────────────────────
   ];
 
@@ -411,6 +419,29 @@ INSERT OR IGNORE INTO report_templates (name, content_html, variables_json) VALU
 ('Residence Certificate (4Ps)',
 '{{header}}<div style="text-align:center;margin-bottom:10px;"><p style="font-size:10pt;">OFFICE OF THE SANGGUNIANG BARANGAY</p><h2 style="margin:10px 0;letter-spacing:2px;">RESIDENCE CERTIFICATE</h2><p style="font-size:10pt;">Pantawid Pamilyang Pilipino Program (4Ps)</p></div><p>TO WHOM IT MAY CONCERN:</p><p style="text-indent:40px;">This is to certify that <strong>{{fullName}}</strong>, of legal age, {{civilStatus}}, Filipino citizen, is a bonafide resident of Purok {{purok}}, {{barangay}}, {{municipality}}, {{province}}, and is a beneficiary of the Pantawid Pamilyang Pilipino Program (4Ps).</p><p style="text-indent:40px;">It is further certified that <strong>{{input:minor_name}}</strong> is the child/dependent of the above-named person residing in the same address.</p><p style="text-indent:40px;">Issued this <strong>{{date}}</strong>.</p>{{signatory:punong_barangay}}',
 '["fullName","civilStatus","purok","barangay","municipality","province","date"]');
+`;
+
+const MIGRATION_009 = `
+-- Add death_date column to residents for tracking date of death
+ALTER TABLE residents ADD COLUMN death_date TEXT;
+`;
+
+const MIGRATION_008 = `
+-- Performance indexes for frequently filtered/searched columns
+CREATE INDEX IF NOT EXISTS idx_residents_birth_date ON residents(birth_date);
+CREATE INDEX IF NOT EXISTS idx_residents_purok ON residents(purok);
+CREATE INDEX IF NOT EXISTS idx_residents_is_indigent ON residents(is_indigent);
+CREATE INDEX IF NOT EXISTS idx_residents_is_4ps ON residents(is_4ps);
+CREATE INDEX IF NOT EXISTS idx_residents_status ON residents(status);
+CREATE INDEX IF NOT EXISTS idx_residents_gender ON residents(gender);
+CREATE INDEX IF NOT EXISTS idx_residents_civil_status ON residents(civil_status);
+CREATE INDEX IF NOT EXISTS idx_residents_last_name ON residents(last_name);
+CREATE INDEX IF NOT EXISTS idx_residents_import_batch ON residents(import_batch_id);
+CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);
+CREATE INDEX IF NOT EXISTS idx_cases_case_number ON cases(case_number);
+CREATE INDEX IF NOT EXISTS idx_summons_case_id ON summons(case_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_officials_is_active ON officials(is_active);
 `;
 
 const MIGRATION_007 = `

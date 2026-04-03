@@ -318,7 +318,7 @@ export function SummaryReportDialog({ open, onClose }: SummaryReportDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-[960px] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Captain&apos;s Summary Report</DialogTitle>
           <DialogDescription>
@@ -363,14 +363,11 @@ export function SummaryReportDialog({ open, onClose }: SummaryReportDialogProps)
             {/* Report preview */}
             <div
               ref={previewRef}
-              className="rounded-md border bg-white text-black max-h-[60vh] overflow-y-auto"
-              style={{
-                fontFamily: "'Times New Roman', Times, serif",
-                fontSize: '12pt',
-                lineHeight: 1.6,
-              }}
+              className="bg-neutral-100 dark:bg-neutral-900 p-6 rounded-md overflow-auto max-h-[60vh]"
             >
-              <div dangerouslySetInnerHTML={{ __html: reportHTML }} />
+              <div className="mx-auto bg-white text-black border border-neutral-300 shadow-sm" style={{ width: '794px', minHeight: '1123px', padding: '96px 72px', fontFamily: "'Times New Roman', Times, serif", fontSize: '12pt', lineHeight: 1.6 }}>
+                <div dangerouslySetInnerHTML={{ __html: reportHTML }} />
+              </div>
             </div>
           </div>
         ) : (

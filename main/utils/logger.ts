@@ -37,8 +37,9 @@ function writeLog(level: string, message: string): void {
     // Also log to console
     if (level === 'ERROR') console.error(line.trim());
     else console.log(line.trim());
-  } catch {
-    // Logging should never crash the app
+  } catch (err) {
+    // Logging should never crash the app — fallback to console
+    console.error('[logger] Failed to write log:', err);
   }
 }
 

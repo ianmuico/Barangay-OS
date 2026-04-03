@@ -15,6 +15,9 @@ import {
   FileText,
   Printer,
   FileDown,
+  Eye,
+  User,
+  ArrowRight,
 } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
@@ -273,6 +276,21 @@ export default function CasesPage() {
   // Delete confirmation
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
+  // Case document preview dialog (shared by all 3 doc types)
+  const [caseDocHtml, setCaseDocHtml] = useState<string | null>(null);
+  const [caseDocTitle, setCaseDocTitle] = useState('');
+  const [docExporting, setDocExporting] = useState(false);
+  const [docPrinting, setDocPrinting] = useState(false);
+
+  // Complaint Narrative form dialog
+  const [narrativeOpen, setNarrativeOpen] = useState(false);
+  const [narrativeIntro, setNarrativeIntro] = useState('');
+  const [narrativeDetails, setNarrativeDetails] = useState('');
+  const [narrativeWitnesses, setNarrativeWitnesses] = useState('');
+  const [narrativeFindings, setNarrativeFindings] = useState('');
+  const [narrativeRecommendation, setNarrativeRecommendation] = useState('');
+  const [narrativeGenerating, setNarrativeGenerating] = useState(false);
+
   // ─── Data fetching ──────────────────────────────────────────────────────
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -305,11 +323,11 @@ export default function CasesPage() {
     setSummons(data);
   }, [api]);
 
-  // ─── Print case details ────────────────────────────────────────────────
-  const handlePrintCase = async () => {
-    if (!api || !detailCase) return;
+  // ─── Build case document HTML ───────────────────────────────────────────
+  const buildCaseDocHtml = async (): Promise<string | null> => {
+    if (!api || !detailCase) return null;
     const settings = await api.getAllSettings();
-    const html = `
+    return `
       <div style="text-align:center;margin-bottom:20px;">
         <p style="margin:0;font-size:10pt;">Republic of the Philippines</p>
         <p style="margin:0;font-size:10pt;">${settings.province || ''}</p>
@@ -350,7 +368,215 @@ export default function CasesPage() {
         </table>
       ` : ''}
     `;
-    await api.printReport(html);
+  };
+
+  // Open the document preview
+  const handleViewCaseDocument = async () => {
+    const html = await buildCaseDocHtml();
+    if (html) {
+      setCaseDocTitle(`Case ${detailCase?.case_number || ''}`);
+      setCaseDocHtml(html);
+    }
+  };
+
+  // Print from preview
+  const handlePrintCaseDoc = async () => {
+    if (!api || !caseDocHtml) return;
+    setDocPrinting(true);
+    try {
+      const result = await api.printReport(caseDocHtml);
+      if (result.success) toast.success('Print dialog opened');
+      else toast.error(result.error || 'Print failed');
+    } finally {
+      setDocPrinting(false);
+    }
+  };
+
+  // Save as PDF from preview
+  const handleExportCaseDoc = async () => {
+    if (!api || !caseDocHtml) return;
+    setDocExporting(true);
+    try {
+      const filename = `Case_${detailCase?.case_number || 'record'}_${Date.now()}`;
+      const result = await api.exportPDF(caseDocHtml, filename);
+      if (result.success) toast.success('PDF saved');
+      else toast.error(result.error || 'Save failed');
+    } finally {
+      setDocExporting(false);
+    }
+  };
+
+  // ─── Summons Notice ────────────────────────────────────────────────────
+  const buildSummonsNoticeHtml = async (s: SummonRecord): Promise<string | null> => {
+    if (!api || !detailCase) return null;
+    const settings = await api.getAllSettings();
+    const officials = await api.getOfficials();
+    const punongBarangay = officials.find((o: any) => o.is_active && /punong|captain|chairman/i.test(o.position));
+    const pbName = punongBarangay
+      ? `${punongBarangay.first_name || ''} ${punongBarangay.last_name || ''}`.trim()
+      : '';
+    const pbPosition = punongBarangay?.position || 'Punong Barangay';
+
+    const hearingDate = s.summon_date
+      ? new Date(s.summon_date).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+      : '___________';
+    const hearingTime = s.summon_time || '___________';
+    const issuedDate = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    return `
+      <div style="text-align:center;margin-bottom:20px;">
+        <p style="margin:0;font-size:10pt;">Republic of the Philippines</p>
+        <p style="margin:0;font-size:10pt;">${settings.province || ''}</p>
+        <p style="margin:0;font-size:10pt;">Municipality of ${settings.municipality || ''}</p>
+        <p style="margin:4px 0;font-size:14pt;font-weight:bold;">${(settings.barangay_name || 'BARANGAY').toUpperCase()}</p>
+        <p style="margin:0;font-size:10pt;font-weight:bold;text-decoration:underline;">OFFICE OF THE LUPONG TAGAPAMAYAPA</p>
+      </div>
+
+      <div style="text-align:center;margin:24px 0 20px;">
+        <h2 style="margin:0;letter-spacing:3px;font-size:16pt;">SUMMONS NOTICE</h2>
+        <p style="margin:6px 0;font-size:10pt;">Summon No. ${s.summon_number} &nbsp;—&nbsp; Case No. ${detailCase.case_number}</p>
+      </div>
+
+      <p style="margin-top:20px;">To:</p>
+      <p style="margin:4px 0 16px;font-weight:bold;font-size:12pt;">${s.summoned_name || detailCase.respondent_name || '___________________________'}</p>
+
+      <p style="text-indent:40px;margin-bottom:12px;">
+        You are hereby summoned to appear before the Lupong Tagapamayapa of
+        <strong>Barangay ${settings.barangay_name || '___________'}</strong>,
+        ${settings.municipality || '___________'}, ${settings.province || '___________'}
+        on <strong>${hearingDate}</strong> at <strong>${hearingTime}</strong>
+        to answer for a <strong>${detailCase.case_type}</strong> case
+        ${detailCase.complainant_name ? `filed against you by <strong>${detailCase.complainant_name}</strong>` : 'filed against you'}.
+      </p>
+
+      ${detailCase.description ? `
+        <p style="text-indent:40px;margin-bottom:12px;">
+          <strong>Nature of Complaint:</strong> ${detailCase.description}
+        </p>
+      ` : ''}
+
+      <p style="text-indent:40px;margin-bottom:12px;">
+        Failure to appear before the Lupong Tagapamayapa without justifiable cause
+        on the date and time above shall be grounds for the issuance of a
+        <em>Certification to File Action</em> in the appropriate court.
+      </p>
+
+      <p style="text-indent:40px;">Issued this <strong>${issuedDate}</strong> at
+        Barangay ${settings.barangay_name || '___________'},
+        ${settings.municipality || '___________'},
+        ${settings.province || '___________'}.
+      </p>
+
+      ${pbName ? `
+        <div style="margin-top:50px;">
+          <p style="margin:0;font-weight:bold;">${pbName}</p>
+          <p style="margin:0;">${pbPosition}</p>
+          <p style="margin:0;font-size:10pt;">Lupong Tagapamayapa</p>
+        </div>
+      ` : ''}
+    `;
+  };
+
+  const handleViewSummonsNotice = async (s: SummonRecord) => {
+    const html = await buildSummonsNoticeHtml(s);
+    if (html) {
+      setCaseDocTitle(`Summons Notice — Case ${detailCase?.case_number} / Summon #${s.summon_number}`);
+      setCaseDocHtml(html);
+    }
+  };
+
+  // ─── Complaint Narrative ────────────────────────────────────────────────
+  const openComplaintNarrative = () => {
+    setNarrativeIntro(detailCase?.description || '');
+    setNarrativeDetails('');
+    setNarrativeWitnesses('');
+    setNarrativeFindings('');
+    setNarrativeRecommendation('');
+    setNarrativeOpen(true);
+  };
+
+  const handleGenerateNarrative = async () => {
+    if (!api || !detailCase) return;
+    setNarrativeGenerating(true);
+    try {
+      const settings = await api.getAllSettings();
+      const officials = await api.getOfficials();
+      const punongBarangay = officials.find((o: any) => o.is_active && /punong|captain|chairman/i.test(o.position));
+      const pbName = punongBarangay
+        ? `${punongBarangay.first_name || ''} ${punongBarangay.last_name || ''}`.trim()
+        : '';
+      const pbPosition = punongBarangay?.position || 'Punong Barangay';
+      const issuedDate = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      const html = `
+        <div style="text-align:center;margin-bottom:20px;">
+          <p style="margin:0;font-size:10pt;">Republic of the Philippines</p>
+          <p style="margin:0;font-size:10pt;">${settings.province || ''}</p>
+          <p style="margin:0;font-size:10pt;">Municipality of ${settings.municipality || ''}</p>
+          <p style="margin:4px 0;font-size:14pt;font-weight:bold;">${(settings.barangay_name || 'BARANGAY').toUpperCase()}</p>
+          <p style="margin:0;font-size:10pt;font-weight:bold;text-decoration:underline;">OFFICE OF THE LUPONG TAGAPAMAYAPA</p>
+        </div>
+
+        <div style="text-align:center;margin:20px 0;">
+          <h2 style="margin:0;letter-spacing:2px;">COMPLAINT CASE NARRATIVE</h2>
+          <p style="margin:4px 0;font-size:10pt;">Case No. ${detailCase.case_number}</p>
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;font-size:11pt;margin-bottom:16px;">
+          <tr><td style="padding:5px;border:1px solid #000;width:35%;font-weight:bold;">Case Number</td><td style="padding:5px;border:1px solid #000;">${detailCase.case_number}</td></tr>
+          <tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Type of Case</td><td style="padding:5px;border:1px solid #000;">${detailCase.case_type}</td></tr>
+          <tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Complainant</td><td style="padding:5px;border:1px solid #000;">${detailCase.complainant_name || '—'}</td></tr>
+          <tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Respondent</td><td style="padding:5px;border:1px solid #000;">${detailCase.respondent_name || '—'}</td></tr>
+          <tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Date Filed</td><td style="padding:5px;border:1px solid #000;">${new Date(detailCase.filed_date).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}</td></tr>
+          <tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Status</td><td style="padding:5px;border:1px solid #000;">${detailCase.status.toUpperCase()}</td></tr>
+          ${pbName ? `<tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Official In Charge</td><td style="padding:5px;border:1px solid #000;">${pbName} — ${pbPosition}</td></tr>` : ''}
+        </table>
+
+        ${narrativeIntro ? `
+          <p style="font-weight:bold;margin-bottom:4px;">I. DESCRIPTION OF THE CASE</p>
+          <p style="text-indent:40px;margin-bottom:16px;white-space:pre-wrap;">${narrativeIntro}</p>
+        ` : ''}
+
+        ${narrativeDetails ? `
+          <p style="font-weight:bold;margin-bottom:4px;">II. ACCOUNT / NARRATIVE</p>
+          <p style="text-indent:40px;margin-bottom:16px;white-space:pre-wrap;">${narrativeDetails}</p>
+        ` : ''}
+
+        ${narrativeWitnesses ? `
+          <p style="font-weight:bold;margin-bottom:4px;">III. WITNESSES</p>
+          <p style="text-indent:40px;margin-bottom:16px;white-space:pre-wrap;">${narrativeWitnesses}</p>
+        ` : ''}
+
+        ${narrativeFindings ? `
+          <p style="font-weight:bold;margin-bottom:4px;">IV. FINDINGS</p>
+          <p style="text-indent:40px;margin-bottom:16px;white-space:pre-wrap;">${narrativeFindings}</p>
+        ` : ''}
+
+        ${narrativeRecommendation ? `
+          <p style="font-weight:bold;margin-bottom:4px;">V. RECOMMENDATION</p>
+          <p style="text-indent:40px;margin-bottom:16px;white-space:pre-wrap;">${narrativeRecommendation}</p>
+        ` : ''}
+
+        <p style="text-indent:40px;margin-top:16px;">
+          Prepared this <strong>${issuedDate}</strong> at Barangay ${settings.barangay_name || '___________'},
+          ${settings.municipality || '___________'}, ${settings.province || '___________'}.
+        </p>
+
+        ${pbName ? `
+          <div style="margin-top:50px;">
+            <p style="margin:0;font-weight:bold;">${pbName}</p>
+            <p style="margin:0;">${pbPosition}</p>
+            <p style="margin:0;font-size:10pt;">Lupong Tagapamayapa</p>
+          </div>
+        ` : ''}
+      `;
+
+      setNarrativeOpen(false);
+      setCaseDocTitle(`Complaint Narrative — Case ${detailCase.case_number}`);
+      setCaseDocHtml(html);
+    } finally {
+      setNarrativeGenerating(false);
+    }
   };
 
   // ─── Case form handlers ────────────────────────────────────────────────
@@ -712,66 +938,130 @@ export default function CasesPage() {
 
       {/* ─── Case Detail Dialog ─────────────────────────────────────────── */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden p-0 gap-0" closeClassName="text-white">
           {detailCase && (
             <>
-              <DialogHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <DialogTitle className="text-lg">
-                      Case {detailCase.case_number}
-                    </DialogTitle>
-                    <DialogDescription className="sr-only">Case details and summons timeline</DialogDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <TypeBadge type={detailCase.case_type} />
-                    <StatusBadge status={detailCase.status} />
+              <DialogDescription className="sr-only">Case details and summons timeline</DialogDescription>
+
+              {/* ── Gradient Banner + Case Number ── */}
+              <div className="relative">
+                <div
+                  className="h-24 w-full"
+                  style={{
+                    background: detailCase.status === 'resolved'
+                      ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
+                      : detailCase.status === 'dismissed'
+                      ? 'linear-gradient(135deg, #6b7280 0%, #9ca3af 100%)'
+                      : detailCase.case_type === 'complaint'
+                      ? 'linear-gradient(135deg, #dc2626 0%, #f97316 100%)'
+                      : detailCase.case_type === 'dispute'
+                      ? 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)'
+                      : 'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)',
+                  }}
+                />
+                {/* Scale icon overlapping banner bottom */}
+                <div className="absolute left-6 -bottom-7">
+                  <div
+                    className="h-14 w-14 flex items-center justify-center text-white font-bold shadow-lg border-4 border-background"
+                    style={{
+                      borderRadius: '22%',
+                      background: detailCase.status === 'resolved'
+                        ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
+                        : detailCase.status === 'dismissed'
+                        ? 'linear-gradient(135deg, #6b7280 0%, #9ca3af 100%)'
+                        : detailCase.case_type === 'complaint'
+                        ? 'linear-gradient(135deg, #dc2626 0%, #f97316 100%)'
+                        : detailCase.case_type === 'dispute'
+                        ? 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)'
+                        : 'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)',
+                    }}
+                  >
+                    <Scale className="h-6 w-6" />
                   </div>
                 </div>
-              </DialogHeader>
+                {/* Badges on the banner */}
+                <div className="absolute right-4 bottom-3 flex items-center gap-1.5">
+                  <TypeBadge type={detailCase.case_type} />
+                  <StatusBadge status={detailCase.status} />
+                </div>
+              </div>
 
-              {/* Case Info */}
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground text-xs mb-1">Complainant</p>
-                    <p className="font-medium">{detailCase.complainant_name || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs mb-1">Respondent</p>
-                    <p className="font-medium">{detailCase.respondent_name || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs mb-1">Filed Date</p>
-                    <p>{formatDate(detailCase.filed_date)}</p>
-                  </div>
-                  {detailCase.resolved_date && (
-                    <div>
-                      <p className="text-muted-foreground text-xs mb-1">Resolved Date</p>
-                      <p>{formatDate(detailCase.resolved_date)}</p>
+              {/* Spacer for icon overflow */}
+              <div className="h-9" />
+
+              <div className="px-6 pb-6 space-y-5">
+                {/* Case title + date */}
+                <div>
+                  <DialogTitle className="text-lg font-semibold">
+                    Case {detailCase.case_number}
+                  </DialogTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                    <CalendarDays className="h-3 w-3" />
+                    Filed {formatDate(detailCase.filed_date)}
+                    {detailCase.resolved_date && (
+                      <span className="ml-2">· Resolved {formatDate(detailCase.resolved_date)}</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Parties card */}
+                <div className="rounded-lg border bg-muted/30 p-4">
+                  <div className="flex items-center gap-3">
+                    {/* Complainant */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Complainant</p>
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                          <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <p className="font-medium text-sm truncate">{detailCase.complainant_name || 'Not specified'}</p>
+                      </div>
                     </div>
-                  )}
+
+                    {/* Arrow */}
+                    <div className="shrink-0 flex flex-col items-center gap-0.5">
+                      <span className="text-[9px] text-muted-foreground font-medium uppercase">vs</span>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+
+                    {/* Respondent */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Respondent</p>
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center shrink-0">
+                          <User className="h-4 w-4 text-red-600 dark:text-red-400" />
+                        </div>
+                        <p className="font-medium text-sm truncate">{detailCase.respondent_name || 'Not specified'}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
+                {/* Description */}
                 {detailCase.description && (
-                  <div className="text-sm">
-                    <p className="text-muted-foreground text-xs mb-1">Description</p>
-                    <p className="whitespace-pre-wrap">{detailCase.description}</p>
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Description</p>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{detailCase.description}</p>
                   </div>
                 )}
 
+                {/* Resolution notes */}
                 {detailCase.resolution_notes && (
-                  <div className="rounded-md border border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30 p-3 text-sm">
-                    <p className="text-xs text-green-700 dark:text-green-400 font-medium mb-1">Resolution Notes</p>
-                    <p className="whitespace-pre-wrap">{detailCase.resolution_notes}</p>
+                  <div className="rounded-lg border border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30 p-4">
+                    <p className="text-[10px] font-semibold text-green-700 dark:text-green-400 uppercase tracking-wider mb-1.5">Resolution Notes</p>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{detailCase.resolution_notes}</p>
                   </div>
                 )}
 
                 {/* Action buttons */}
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={handlePrintCase}>
-                    <Printer className="mr-2 h-3.5 w-3.5" />
-                    Print Case
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button variant="outline" size="sm" onClick={handleViewCaseDocument}>
+                    <Eye className="mr-2 h-3.5 w-3.5" />
+                    Case Record
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={openComplaintNarrative}>
+                    <FileText className="mr-2 h-3.5 w-3.5" />
+                    Complaint Narrative
                   </Button>
                   {(detailCase.status === 'pending' || detailCase.status === 'ongoing') && (
                     <>
@@ -790,9 +1080,9 @@ export default function CasesPage() {
                 </div>
 
                 {/* ─── Summons Timeline ────────────────────────────────────── */}
-                <div className="pt-2">
+                <div className="pt-1">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-sm">Summons Timeline</h3>
+                    <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Summons Timeline</h3>
                     <Button variant="outline" size="sm" onClick={openNewSummon}>
                       <Plus className="mr-1 h-3.5 w-3.5" />
                       Add Summon
@@ -800,7 +1090,7 @@ export default function CasesPage() {
                   </div>
 
                   {summons.length === 0 ? (
-                    <div className="text-center py-8 text-sm text-muted-foreground">
+                    <div className="text-center py-8 text-sm text-muted-foreground rounded-lg border border-dashed">
                       <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
                       No summons issued yet.
                     </div>
@@ -809,7 +1099,7 @@ export default function CasesPage() {
                       {/* Vertical timeline line */}
                       <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-border" />
 
-                      <div className="space-y-4">
+                      <div className="space-y-3">
                         {summons.map((s, idx) => (
                           <div key={s.id} className="relative">
                             {/* Timeline dot */}
@@ -826,20 +1116,32 @@ export default function CasesPage() {
                             </div>
 
                             {/* Summon card */}
-                            <div className="rounded-md border bg-card p-3 text-sm">
+                            <div className="rounded-lg border bg-card p-3 text-sm">
                               <div className="flex items-center justify-between mb-1">
                                 <div className="flex items-center gap-2">
                                   <span className="font-medium">Summon #{s.summon_number}</span>
                                   <SummonStatusBadge status={s.status} />
                                 </div>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  onClick={() => openEditSummon(s)}
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-xs gap-1"
+                                    onClick={() => handleViewSummonsNotice(s)}
+                                    title="Print Summons Notice"
+                                  >
+                                    <Printer className="h-3 w-3" />
+                                    Notice
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => openEditSummon(s)}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
                               </div>
                               <div className="flex items-center gap-4 text-muted-foreground text-xs">
                                 <span className="flex items-center gap-1">
@@ -977,6 +1279,120 @@ export default function CasesPage() {
               className={resolveStatus === 'resolved' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
             >
               {saving ? 'Saving...' : resolveStatus === 'resolved' ? 'Resolve Case' : 'Dismiss Case'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Case Document Preview Dialog ─────────────────────────────── */}
+      <Dialog open={caseDocHtml !== null} onOpenChange={() => setCaseDocHtml(null)}>
+        <DialogContent className="max-h-[90vh] max-w-[960px] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{caseDocTitle}</DialogTitle>
+            <DialogDescription>Preview the case document. You can print it or save as PDF.</DialogDescription>
+          </DialogHeader>
+          <div className="bg-neutral-100 dark:bg-neutral-900 p-6 rounded-md overflow-auto max-h-[60vh]">
+            <div className="mx-auto bg-white text-black border border-neutral-300 shadow-sm" style={{ width: '794px', minHeight: '1123px', padding: '96px 72px', fontFamily: "'Times New Roman', Times, serif", fontSize: '12pt', lineHeight: 1.6 }}>
+              {caseDocHtml && <div dangerouslySetInnerHTML={{ __html: caseDocHtml }} />}
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setCaseDocHtml(null)}>Close</Button>
+            <Button variant="outline" onClick={handlePrintCaseDoc} disabled={docPrinting}>
+              <Printer className="mr-2 h-4 w-4" />
+              {docPrinting ? 'Printing...' : 'Print'}
+            </Button>
+            <Button onClick={handleExportCaseDoc} disabled={docExporting}>
+              <FileDown className="mr-2 h-4 w-4" />
+              {docExporting ? 'Saving...' : 'Save PDF'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Complaint Narrative Form Dialog ───────────────────────────── */}
+      <Dialog open={narrativeOpen} onOpenChange={setNarrativeOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Complaint Narrative — Case {detailCase?.case_number}</DialogTitle>
+            <DialogDescription>
+              Fill in the case narrative. The header and official in charge will be auto-filled from your barangay settings.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Auto-filled info banner */}
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground text-sm">Auto-filled from records</p>
+              <p>Case No: <span className="font-medium text-foreground">{detailCase?.case_number}</span></p>
+              <p>Complainant: <span className="font-medium text-foreground">{detailCase?.complainant_name || '—'}</span></p>
+              <p>Respondent: <span className="font-medium text-foreground">{detailCase?.respondent_name || '—'}</span></p>
+              <p>Barangay header &amp; official in charge will be pulled from settings automatically.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="narrative-intro">I. Description of the Case</Label>
+              <Textarea
+                id="narrative-intro"
+                rows={3}
+                value={narrativeIntro}
+                onChange={(e) => setNarrativeIntro(e.target.value)}
+                placeholder="Brief description of what the case is about..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="narrative-details">II. Account / Narrative <span className="text-destructive">*</span></Label>
+              <Textarea
+                id="narrative-details"
+                rows={6}
+                value={narrativeDetails}
+                onChange={(e) => setNarrativeDetails(e.target.value)}
+                placeholder="Provide a detailed account of what happened, when it happened, and how it happened..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="narrative-witnesses">III. Witnesses</Label>
+              <Textarea
+                id="narrative-witnesses"
+                rows={2}
+                value={narrativeWitnesses}
+                onChange={(e) => setNarrativeWitnesses(e.target.value)}
+                placeholder="List witnesses (name, address, relationship to the case)..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="narrative-findings">IV. Findings</Label>
+              <Textarea
+                id="narrative-findings"
+                rows={3}
+                value={narrativeFindings}
+                onChange={(e) => setNarrativeFindings(e.target.value)}
+                placeholder="Findings of the Lupong Tagapamayapa after mediation..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="narrative-recommendation">V. Recommendation</Label>
+              <Textarea
+                id="narrative-recommendation"
+                rows={2}
+                value={narrativeRecommendation}
+                onChange={(e) => setNarrativeRecommendation(e.target.value)}
+                placeholder="Recommended action or resolution..."
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNarrativeOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleGenerateNarrative}
+              disabled={narrativeGenerating || !narrativeDetails.trim()}
+            >
+              {narrativeGenerating ? 'Generating...' : 'Preview Document'}
             </Button>
           </DialogFooter>
         </DialogContent>

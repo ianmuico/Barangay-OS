@@ -18,6 +18,8 @@ interface ReportGenerateDialogProps {
   open: boolean;
   onClose: () => void;
   resident: Resident;
+  /** Optional filter — only templates passing this predicate are shown */
+  templateFilter?: (t: ReportTemplate) => boolean;
 }
 
 // Convert field_name to readable label
@@ -33,7 +35,7 @@ interface TemplateInputGroup {
   fields: string[];
 }
 
-export function ReportGenerateDialog({ open, onClose, resident }: ReportGenerateDialogProps) {
+export function ReportGenerateDialog({ open, onClose, resident, templateFilter }: ReportGenerateDialogProps) {
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [generatedReports, setGeneratedReports] = useState<{ templateName: string; html: string }[]>([]);
@@ -50,7 +52,9 @@ export function ReportGenerateDialog({ open, onClose, resident }: ReportGenerate
     if (open) {
       const api = getAPI();
       if (!api) return;
-      api.getTemplates().then(setTemplates);
+      api.getTemplates().then((all) => {
+        setTemplates(templateFilter ? all.filter(templateFilter) : all);
+      });
       setGeneratedReports([]);
       setSelectedIds(new Set());
       setInputGroups([]);

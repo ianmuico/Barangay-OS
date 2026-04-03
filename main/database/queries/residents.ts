@@ -253,7 +253,7 @@ export function updateResident(id: number, data: Partial<Resident>): void {
     'occupation', 'is_indigent', 'voter_status', 'blood_type',
     'photo_path', 'household_id', 'partner_id', 'mother_id', 'father_id', 'notes',
     'religion', 'citizenship', 'philsys_card_no', 'educational_attainment',
-    'is_4ps', 'status', 'import_batch_id'
+    'is_4ps', 'status', 'import_batch_id', 'death_date'
   ];
 
   for (const [key, value] of Object.entries(data)) {

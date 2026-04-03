@@ -41,6 +41,7 @@ export interface Resident {
   educational_attainment: string | null;
   is_4ps: number;
   status: string;
+  death_date?: string | null;
   created_at: string;
   updated_at: string;
   age?: number;
@@ -74,6 +75,7 @@ export interface ResidentData {
   educational_attainment?: string | null;
   is_4ps?: number;
   status?: string;
+  death_date?: string | null;
 }
 
 export interface ResidentListParams {
@@ -370,6 +372,7 @@ export interface ElectronAPI {
   // Danger Zone
   wipeDatabase: (pin: string) => Promise<{ success: boolean; error?: string }>;
   fillTestData: (pin: string) => Promise<{ success: boolean; error?: string }>;
+  reseedTemplates: (pin: string) => Promise<{ success: boolean; error?: string }>;
   setDangerZonePin: (currentPin: string, newPin: string) => Promise<{ success: boolean; error?: string }>;
 
   backupDatabase: () => Promise<{ success: boolean; path?: string; error?: string }>;

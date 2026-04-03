@@ -64,7 +64,7 @@ export function DataTable<TData, TValue>({
         {toolbar}
       </div>
 
-      <div className="rounded-md border">
+      <div className="rounded-md border" role="region" aria-label="Data table">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -118,11 +118,12 @@ export function DataTable<TData, TValue>({
               size="sm"
               onClick={() => onPageChange(page - 1)}
               disabled={page <= 1}
+              aria-label="Previous page"
             >
               <ChevronLeft className="h-4 w-4" />
               Previous
             </Button>
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm text-muted-foreground" aria-live="polite">
               Page {page} of {totalPages}
             </span>
             <Button
@@ -130,6 +131,7 @@ export function DataTable<TData, TValue>({
               size="sm"
               onClick={() => onPageChange(page + 1)}
               disabled={page >= totalPages}
+              aria-label="Next page"
             >
               Next
               <ChevronRight className="h-4 w-4" />

@@ -252,6 +252,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Danger Zone
   wipeDatabase: (pin: string) => ipcRenderer.invoke('db:dangerzone:wipe', pin),
   fillTestData: (pin: string) => ipcRenderer.invoke('db:dangerzone:fillTestData', pin),
+  reseedTemplates: (pin: string) => ipcRenderer.invoke('db:dangerzone:reseedTemplates', pin),
   setDangerZonePin: (currentPin: string, newPin: string) => ipcRenderer.invoke('db:dangerzone:setPin', currentPin, newPin),
 
   // File dialogs

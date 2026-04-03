@@ -7,6 +7,7 @@ import { ScrollHeaderProvider } from '@/lib/scroll-header-context';
 import { Sidebar } from '@/components/sidebar';
 import { Topbar } from '@/components/topbar';
 import { SetupWizard } from '@/components/setup-wizard';
+import { ErrorBoundary } from '@/components/error-boundary';
 import { getAPI } from '@/lib/ipc';
 
 export default function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -19,6 +20,21 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
       router.replace('/login');
     }
   }, [user, loading, router]);
+
+  // Session timeout: periodically check if session is still valid
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(async () => {
+      const api = getAPI();
+      if (!api) return;
+      const currentUser = await api.getCurrentUser();
+      if (!currentUser) {
+        // Session expired — redirect to login
+        router.replace('/login');
+      }
+    }, 60_000); // Check every 60 seconds
+    return () => clearInterval(interval);
+  }, [user, router]);
 
   // Check if first-run setup is needed
   useEffect(() => {
@@ -59,12 +75,21 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
 
   return (
     <ScrollHeaderProvider>
+      {/* Skip navigation link for keyboard users */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-background focus:px-4 focus:py-2 focus:rounded-md focus:ring-2 focus:ring-ring focus:text-foreground"
+      >
+        Skip to content
+      </a>
       <div className="flex h-screen">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
           <Topbar />
-          <main className="flex-1 overflow-auto p-6">
-            {children}
+          <main id="main-content" className="flex-1 overflow-auto p-6" tabIndex={-1}>
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
           </main>
         </div>
       </div>

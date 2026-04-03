@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Users, UserCheck, HeartHandshake, Baby, TrendingUp, FileText } from 'lucide-react';
 import { SummaryReportDialog } from '@/components/summary-report-dialog';
 import { PageHeader } from '@/components/page-header';
@@ -75,7 +75,7 @@ function formatTime(dateStr: string) {
   return d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-function CustomTooltip({ active, payload }: any) {
+const CustomTooltip = React.memo(function CustomTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const d = payload[0];
   return (
@@ -84,7 +84,7 @@ function CustomTooltip({ active, payload }: any) {
       <p className="text-muted-foreground">{d.value.toLocaleString()} residents</p>
     </div>
   );
-}
+});
 
 export default function DashboardPage() {
   const { t } = useTranslation();
@@ -383,11 +383,13 @@ export default function DashboardPage() {
                     key={entry.id}
                     className="flex items-center gap-2.5 px-6 py-2 hover:bg-muted/30 transition-colors"
                   >
-                    {/* Colored dot */}
+                    {/* Colored dot with aria label */}
                     <div
                       className={`h-2 w-2 rounded-full shrink-0 ${
                         ACTION_DOTS[entry.action] || 'bg-muted-foreground'
                       }`}
+                      role="img"
+                      aria-label={ACTION_LABELS[entry.action] || entry.action}
                     />
 
                     {/* Action label */}

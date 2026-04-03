@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, Eye, List } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,9 @@ function stripHtml(html: string): string {
 
 export default function TemplatesPage() {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   // ─── Report Templates ───
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [editOpen, setEditOpen] = useState(false);
@@ -80,6 +84,19 @@ export default function TemplatesPage() {
   };
 
   useEffect(() => { fetchTemplates(); fetchListHeaders(); }, []);
+
+  // Handle ?edit=<id> from generator page
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (editId && templates.length > 0) {
+      const tpl = templates.find(t => t.id === Number(editId));
+      if (tpl) {
+        openEdit(tpl);
+        // Clear the query param so it doesn't re-trigger
+        router.replace('/templates', { scroll: false });
+      }
+    }
+  }, [searchParams, templates]);
 
   // ─── Report Template handlers ───
   const openNew = () => { setEditTemplate(null); setName(''); setContentHtml(''); setEditOpen(true); };

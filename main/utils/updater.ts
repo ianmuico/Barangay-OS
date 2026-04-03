@@ -70,8 +70,8 @@ export function initAutoUpdater(window: BrowserWindow): void {
 
   // Check for updates after a delay (don't block startup)
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(() => {
-      // Silent fail — offline or no releases yet
+    autoUpdater.checkForUpdates().catch((err) => {
+      logInfo(`Update check skipped: ${err?.message || 'offline or no releases'}`);
     });
   }, 10000);
 }

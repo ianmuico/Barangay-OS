@@ -108,6 +108,13 @@ function resolveSignatories(html: string): string {
   });
 }
 
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
+  };
+  return text.replace(/[&<>"']/g, (c) => map[c]);
+}
+
 function resolveVariables(html: string, resident: any, inputValues?: Record<string, string>): string {
   const fullName = [resident.first_name, resident.middle_name, resident.last_name, resident.suffix]
     .filter(Boolean)
@@ -163,10 +170,10 @@ function resolveVariables(html: string, resident: any, inputValues?: Record<stri
   // Resolve {{header}} tag
   result = result.replace(/\{\{header\}\}/g, buildHeaderHtml());
 
-  // Resolve {{input:fieldName}} — replace with provided values or leave placeholder
+  // Resolve {{input:fieldName}} — replace with provided values or leave placeholder (HTML-escaped)
   result = result.replace(/\{\{input:(\w+)\}\}/g, (match, fieldName) => {
     if (inputValues && inputValues[fieldName] !== undefined) {
-      return inputValues[fieldName];
+      return escapeHtml(inputValues[fieldName]);
     }
     return `<span style="color:#666;text-decoration:underline;">___${fieldName}___</span>`;
   });
@@ -174,9 +181,9 @@ function resolveVariables(html: string, resident: any, inputValues?: Record<stri
   // Resolve {{signatory:role}} tags
   result = resolveSignatories(result);
 
-  // Resolve standard variables
+  // Resolve standard variables (HTML-escaped to prevent XSS)
   for (const [key, value] of Object.entries(variables)) {
-    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), escapeHtml(value));
   }
 
   return result;

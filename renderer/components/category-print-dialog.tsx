@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import { getYouthCategory } from '@/components/occupation-select';
 
 // ─── Types ───
-interface GroupOption {
+export interface GroupOption {
   value: string;
   label: string;
   /** Function to extract group key from resident */

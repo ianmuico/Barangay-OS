@@ -157,6 +157,7 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
     educational_attainment: '',
     is_4ps: false,
     status: 'living',
+    death_date: '',
   });
   const [saving, setSaving] = useState(false);
   const [partnerName, setPartnerName] = useState('');
@@ -195,6 +196,7 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
         educational_attainment: resident?.educational_attainment || '',
         is_4ps: resident?.is_4ps === 1,
         status: resident?.status || 'living',
+        death_date: resident?.death_date || '',
       });
 
       const api = getAPI();
@@ -546,6 +548,17 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
                   </SelectContent>
                 </Select>
               </div>
+              {formData.status === 'deceased' && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Date of Death</Label>
+                  <Input
+                    type="date"
+                    className="h-9"
+                    value={formData.death_date}
+                    onChange={(e) => handleChange('death_date', e.target.value)}
+                  />
+                </div>
+              )}
             </div>
 
             {/* ── Family Links Section ── */}

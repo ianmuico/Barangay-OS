@@ -70,7 +70,7 @@ export default function LoginPage() {
 
     setChangingPassword(true);
     try {
-      const result = await api.updatePassword(loggedInUserId, 'admin123', newPassword);
+      const result = await api.updatePassword(loggedInUserId, password, newPassword);
       if (result.success) {
         toast.success('Password changed successfully');
         setShowPasswordChange(false);

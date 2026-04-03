@@ -1,86 +1,46 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { ColumnDef } from '@tanstack/react-table';
-import { Download } from 'lucide-react';
-import { DataTable } from '@/components/data-table';
-import { Button } from '@/components/ui/button';
-import { TableSkeleton } from '@/components/skeletons';
-import { PageHeader } from '@/components/page-header';
-import { usePageSearch } from '@/hooks/use-page-search';
-import { getAPI, type Resident, type PaginatedResult } from '@/lib/ipc';
-import { toast } from 'sonner';
+import { useMemo } from 'react';
+import { CategoryResidentsPage, type CategoryConfig } from '@/components/category-residents-page';
+
+// Keywords that flag templates as clearly case/complaint-related (exclude from deceased page)
+const CASE_TEMPLATE_KEYWORDS = ['summon', 'sumbong', 'pagtawag', 'minutas', 'complaint', 'mediation'];
 
 export default function DeceasedPage() {
-  const [result, setResult] = useState<PaginatedResult<Resident> | null>(null);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [loaded, setLoaded] = useState(false);
+  const config: CategoryConfig = useMemo(() => ({
+    title: 'Deceased Records',
+    description: 'Archive of deceased residents — not counted in demographics',
+    searchPlaceholder: 'Search deceased records...',
+    filterParams: { status: 'deceased' },
+    showExport: true,
+    extraColumns: [
+      {
+        accessorKey: 'middle_name',
+        header: 'Middle Name',
+        cell: ({ row }: any) => row.original.middle_name || '-',
+      },
+      {
+        accessorKey: 'death_date',
+        header: 'Date of Death',
+        cell: ({ row }: any) => {
+          const d: string | null | undefined = row.original.death_date;
+          if (!d) return <span className="text-muted-foreground text-xs">—</span>;
+          try {
+            return new Date(d).toLocaleDateString('en-PH', {
+              year: 'numeric', month: 'short', day: 'numeric',
+            });
+          } catch {
+            return d;
+          }
+        },
+      },
+    ],
+    // Exclude case/complaint-related templates; keep general + death-related ones
+    reportTemplateFilter: (t) => {
+      const name = t.name.toLowerCase();
+      return !CASE_TEMPLATE_KEYWORDS.some((kw) => name.includes(kw));
+    },
+  }), []);
 
-  usePageSearch(search, setSearch, 'Search deceased records...');
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  const fetchDeceased = useCallback(async () => {
-    const api = getAPI();
-    if (!api) return;
-    const data = await api.getResidents({ search: debouncedSearch, page, limit: 50, status: 'deceased' });
-    setResult(data);
-    setLoaded(true);
-  }, [debouncedSearch, page]);
-
-  useEffect(() => { fetchDeceased(); }, [fetchDeceased]);
-  useEffect(() => { setPage(1); }, [debouncedSearch]);
-
-  const handleExport = async () => {
-    const api = getAPI();
-    if (!api) return;
-    const result = await api.exportResidents({ status: 'deceased' });
-    if (result.success) {
-      toast.success(`Exported to ${result.path}`);
-    } else {
-      toast.error(result.error || 'Export failed');
-    }
-  };
-
-  const columns: ColumnDef<Resident>[] = [
-    { accessorKey: 'last_name', header: 'Last Name' },
-    { accessorKey: 'first_name', header: 'First Name' },
-    { accessorKey: 'middle_name', header: 'Middle Name', cell: ({ row }) => row.original.middle_name || '-' },
-    { accessorKey: 'age', header: 'Age at Record', cell: ({ row }) => row.original.age ?? '-' },
-    { accessorKey: 'gender', header: 'Gender' },
-    { accessorKey: 'purok', header: 'Purok', cell: ({ row }) => row.original.purok || '-' },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <PageHeader title="Deceased Records" description="Archive of deceased residents — not counted in demographics" />
-        <Button variant="outline" onClick={handleExport}>
-          <Download className="mr-2 h-4 w-4" />
-          Export CSV
-        </Button>
-      </div>
-
-      {!loaded ? (
-        <TableSkeleton />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={result?.data || []}
-          searchPlaceholder="Search deceased records..."
-          searchValue={search}
-          onSearchChange={setSearch}
-          page={page}
-          totalPages={result?.totalPages || 1}
-          onPageChange={setPage}
-          total={result?.total}
-        />
-      )}
-    </div>
-  );
+  return <CategoryResidentsPage config={config} />;
 }

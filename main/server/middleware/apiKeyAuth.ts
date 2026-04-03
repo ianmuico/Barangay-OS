@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { getSetting } from '../../database/queries/settings';
+import { timeSafeEqual } from '../../utils/hash';
 
 export function apiKeyAuth(req: Request, res: Response, next: NextFunction): void {
   // Health endpoint is public
@@ -15,7 +16,7 @@ export function apiKeyAuth(req: Request, res: Response, next: NextFunction): voi
   }
 
   const providedKey = req.headers['x-api-key'] as string;
-  if (!providedKey || providedKey !== apiKey) {
+  if (!providedKey || !timeSafeEqual(providedKey, apiKey)) {
     res.status(401).json({ error: 'Invalid API key' });
     return;
   }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Download, Upload, Trash2, FlaskConical, ShieldAlert, Loader2, ChevronDown } from 'lucide-react';
+import { Download, Upload, Trash2, FlaskConical, ShieldAlert, Loader2, ChevronDown, FileText } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -106,7 +106,7 @@ function PinInput({
 }
 
 // ─── Danger Zone action config ────────────────────────────────────────
-type DangerAction = 'wipe' | 'fill';
+type DangerAction = 'wipe' | 'fill' | 'reseed';
 
 const ACTION_CONFIG = {
   wipe: {
@@ -126,6 +126,15 @@ const ACTION_CONFIG = {
     icon: FlaskConical,
     color: 'text-amber-500',
     bgColor: 'bg-amber-500/10',
+  },
+  reseed: {
+    dialogTitle: 'Restore Default Templates',
+    dialogDesc: 'This will re-insert all default report templates (Barangay Clearance, Certificate of Residency, Indigency, Business Clearance, etc.). Existing templates with the same name will not be duplicated.',
+    buttonLabel: 'Restore Templates',
+    successMsg: 'Default templates restored! Reloading...',
+    icon: FileText,
+    color: 'text-blue-500',
+    bgColor: 'bg-blue-500/10',
   },
 };
 
@@ -186,6 +195,8 @@ export default function BackupRestorePage() {
     try {
       const result = dialogAction === 'wipe'
         ? await api.wipeDatabase(pin)
+        : dialogAction === 'reseed'
+        ? await api.reseedTemplates(pin)
         : await api.fillTestData(pin);
 
       if (result.success) {
@@ -268,6 +279,27 @@ export default function BackupRestorePage() {
               </div>
               <Button variant="destructive" size="sm" onClick={() => openDangerDialog('wipe')}>
                 Wipe
+              </Button>
+            </div>
+
+            {/* Restore Default Templates */}
+            <div className="flex items-center justify-between rounded-md border border-blue-500/20 px-4 py-3">
+              <div className="flex-1 min-w-0 mr-4">
+                <p className="text-sm font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5" />
+                  Restore Default Templates
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Re-insert all built-in report templates (clearances, certifications, etc.).
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-blue-500/30 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                onClick={() => openDangerDialog('reseed')}
+              >
+                Restore
               </Button>
             </div>
 
