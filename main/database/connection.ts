@@ -159,6 +159,12 @@ function runInlineMigrations(db: Database.Database): void {
     { name: '007_bisaya_templates.sql',            sql: MIGRATION_007 },
     { name: '008_indexes.sql',                     sql: MIGRATION_008 },
     { name: '009_death_date.sql',                  sql: MIGRATION_009 },
+    { name: '010_template_paper.sql',              sql: MIGRATION_010 },
+    { name: '011_case_parties.sql',                sql: MIGRATION_011 },
+    { name: '012_case_documents.sql',              sql: MIGRATION_012 },
+    { name: '013_issues_businesses_template_pages.sql', sql: MIGRATION_013 },
+    { name: '014_business_documents.sql',          sql: MIGRATION_014 },
+    { name: '015_resident_uid.sql',                sql: MIGRATION_015 },
     // ─── Add future migrations here ────────────────────────────────────
   ];
 
@@ -424,6 +430,123 @@ INSERT OR IGNORE INTO report_templates (name, content_html, variables_json) VALU
 const MIGRATION_009 = `
 -- Add death_date column to residents for tracking date of death
 ALTER TABLE residents ADD COLUMN death_date TEXT;
+`;
+
+const MIGRATION_010 = `
+-- Per-template paper settings: {"size":"A4"|"Letter"|"Long","orientation":"portrait"|"landscape","margins":{"top":1,"bottom":1,"left":1,"right":1}} (margins in inches)
+ALTER TABLE report_templates ADD COLUMN paper_json TEXT;
+`;
+
+const MIGRATION_015 = `
+-- Permanent unique ID per resident (UUID v4) — used for QR codes and the
+-- mobile partner app. Never changes, survives renames and edits.
+ALTER TABLE residents ADD COLUMN resident_uid TEXT;
+UPDATE residents SET resident_uid =
+  lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' ||
+  substr(lower(hex(randomblob(2))), 2) || '-' ||
+  substr('89ab', (abs(random()) % 4) + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' ||
+  lower(hex(randomblob(6)))
+WHERE resident_uid IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_residents_uid ON residents(resident_uid);
+`;
+
+const MIGRATION_014 = `
+-- Generated documents can be tied to a business (clearances, permits, custom docs)
+ALTER TABLE generated_reports ADD COLUMN business_id INTEGER REFERENCES businesses(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_generated_reports_business ON generated_reports(business_id);
+`;
+
+const MIGRATION_013 = `
+-- Resident issues (behavior flags noted by the admin, separate from KP cases)
+CREATE TABLE IF NOT EXISTS resident_issues (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  resident_id INTEGER NOT NULL REFERENCES residents(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  details TEXT,
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'resolved')),
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_resident_issues_resident ON resident_issues(resident_id);
+CREATE INDEX IF NOT EXISTS idx_resident_issues_status ON resident_issues(status);
+CREATE INDEX IF NOT EXISTS idx_case_parties_resident ON case_parties(resident_id);
+CREATE INDEX IF NOT EXISTS idx_cases_complainant ON cases(complainant_id);
+CREATE INDEX IF NOT EXISTS idx_cases_respondent ON cases(respondent_id);
+
+-- People from outside the barangay who own businesses/property here
+CREATE TABLE IF NOT EXISTS outside_owners (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  first_name TEXT NOT NULL,
+  middle_name TEXT,
+  last_name TEXT NOT NULL,
+  suffix TEXT,
+  gender TEXT,
+  birth_date TEXT,
+  address TEXT,
+  contact_number TEXT,
+  email TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Businesses operating in the barangay
+CREATE TABLE IF NOT EXISTS businesses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  nature TEXT,
+  address TEXT,
+  purok TEXT,
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'closed')),
+  date_registered TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Owners: a resident OR an outside owner (multiple per business)
+CREATE TABLE IF NOT EXISTS business_owners (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  resident_id INTEGER REFERENCES residents(id) ON DELETE CASCADE,
+  outside_owner_id INTEGER REFERENCES outside_owners(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_business_owners_business ON business_owners(business_id);
+CREATE INDEX IF NOT EXISTS idx_business_owners_resident ON business_owners(resident_id);
+CREATE INDEX IF NOT EXISTS idx_business_owners_outside ON business_owners(outside_owner_id);
+
+-- Template visibility: JSON array of page keys, NULL/empty = show everywhere
+ALTER TABLE report_templates ADD COLUMN pages_json TEXT;
+`;
+
+const MIGRATION_012 = `
+-- Generated case documents (case record, narrative, summons notice, custom
+-- documents) are saved alongside resident certificates. title labels the doc.
+ALTER TABLE generated_reports ADD COLUMN case_id INTEGER REFERENCES cases(id) ON DELETE SET NULL;
+ALTER TABLE generated_reports ADD COLUMN title TEXT;
+CREATE INDEX IF NOT EXISTS idx_generated_reports_case ON generated_reports(case_id);
+CREATE INDEX IF NOT EXISTS idx_generated_reports_date ON generated_reports(generated_at);
+`;
+
+const MIGRATION_011 = `
+-- Multiple complainants/respondents per case. The legacy single-party columns
+-- on cases are kept in sync (first party of each role) for backward compatibility.
+CREATE TABLE IF NOT EXISTS case_parties (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  resident_id INTEGER REFERENCES residents(id) ON DELETE SET NULL,
+  role TEXT NOT NULL CHECK (role IN ('complainant', 'respondent')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_case_parties_case ON case_parties(case_id);
+
+-- Backfill from the existing single-party columns
+INSERT INTO case_parties (case_id, resident_id, role)
+  SELECT id, complainant_id, 'complainant' FROM cases WHERE complainant_id IS NOT NULL;
+INSERT INTO case_parties (case_id, resident_id, role)
+  SELECT id, respondent_id, 'respondent' FROM cases WHERE respondent_id IS NOT NULL;
 `;
 
 const MIGRATION_008 = `

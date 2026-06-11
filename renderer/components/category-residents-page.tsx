@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TableSkeleton } from '@/components/skeletons';
 import { ReportGenerateDialog } from '@/components/report-generate-dialog';
+import { ResidentDetailDialog } from '@/components/resident-detail-dialog';
 import { CategoryPrintDialog, type GroupOption } from '@/components/category-print-dialog';
 import { PageHeader } from '@/components/page-header';
 import { usePageSearch } from '@/hooks/use-page-search';
@@ -33,6 +34,8 @@ export interface CategoryConfig {
   showExport?: boolean;
   /** Optional filter applied to report templates in generate dialog */
   reportTemplateFilter?: (t: ReportTemplate) => boolean;
+  /** Page key for template visibility tagging (e.g. 'seniors') */
+  pageKey?: string;
 }
 
 export function CategoryResidentsPage({ config }: { config: CategoryConfig }) {
@@ -42,6 +45,8 @@ export function CategoryResidentsPage({ config }: { config: CategoryConfig }) {
   const [page, setPage] = useState(1);
   const [loaded, setLoaded] = useState(false);
   const [reportResident, setReportResident] = useState<Resident | null>(null);
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
 
   usePageSearch(search, setSearch, config.searchPlaceholder);
@@ -110,7 +115,7 @@ export function CategoryResidentsPage({ config }: { config: CategoryConfig }) {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setReportResident(row.original)}
+          onClick={(e) => { e.stopPropagation(); setReportResident(row.original); }}
           aria-label={`Generate report for ${row.original.first_name} ${row.original.last_name}`}
           title="Generate Report"
         >
@@ -155,6 +160,7 @@ export function CategoryResidentsPage({ config }: { config: CategoryConfig }) {
           totalPages={result?.totalPages || 1}
           onPageChange={setPage}
           total={result?.total}
+          onRowClick={(r) => { setDetailId(r.id); setDetailOpen(true); }}
         />
       )}
 
@@ -164,8 +170,11 @@ export function CategoryResidentsPage({ config }: { config: CategoryConfig }) {
           onClose={() => setReportResident(null)}
           resident={reportResident}
           templateFilter={config.reportTemplateFilter}
+          pageKey={config.pageKey}
         />
       )}
+
+      <ResidentDetailDialog residentId={detailId} open={detailOpen} onOpenChange={setDetailOpen} pageKey={config.pageKey} />
 
       {config.printConfig && (
         <CategoryPrintDialog

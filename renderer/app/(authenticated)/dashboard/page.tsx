@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Users, UserCheck, HeartHandshake, Baby, TrendingUp, FileText } from 'lucide-react';
+import { Users, UserCheck, HeartHandshake, Baby, TrendingUp, FileText, Home, Scale, Vote, Banknote, HeartPulse, CalendarClock } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { SummaryReportDialog } from '@/components/summary-report-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
@@ -88,6 +89,7 @@ const CustomTooltip = React.memo(function CustomTooltip({ active, payload }: any
 
 export default function DashboardPage() {
   const { t } = useTranslation();
+  const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [detailed, setDetailed] = useState<DetailedStats | null>(null);
   const [activities, setActivities] = useState<AuditEntry[]>([]);
@@ -258,6 +260,36 @@ export default function DashboardPage() {
           );
         })}
       </div>
+
+      {/* Secondary stats — quick links to other modules */}
+      {detailed && (
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+          {[
+            { label: '4Ps Beneficiaries', value: stats.total4Ps, icon: Banknote, color: '#f97316', href: '/four-ps' },
+            { label: 'Households', value: detailed.householdCount ?? 0, icon: Home, color: '#14b8a6', href: null },
+            { label: 'Active Cases', value: (detailed.caseStats?.pending ?? 0) + (detailed.caseStats?.ongoing ?? 0), icon: Scale, color: '#ef4444', href: '/cases' },
+            { label: 'Registered Voters', value: detailed.voterStats?.registered ?? 0, icon: Vote, color: '#6366f1', href: null },
+            { label: 'Deceased', value: detailed.deceasedCount ?? 0, icon: HeartPulse, color: '#6b7280', href: '/deceased' },
+            { label: 'Resolved Cases', value: detailed.caseStats?.resolved ?? 0, icon: Scale, color: '#10b981', href: '/cases' },
+          ].map((card) => (
+            <Card
+              key={card.label}
+              className={card.href ? 'cursor-pointer transition-shadow hover:shadow-md' : ''}
+              onClick={card.href ? () => router.push(card.href!) : undefined}
+            >
+              <CardContent className="flex items-center gap-3 p-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg shrink-0" style={{ background: `${card.color}1a` }}>
+                  <card.icon className="h-4 w-4" style={{ color: card.color }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-lg font-bold leading-tight">{card.value.toLocaleString()}</p>
+                  <p className="truncate text-[11px] text-muted-foreground">{card.label}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Main content: Chart + Activity */}
       <div className="grid gap-4 lg:grid-cols-5">
@@ -493,6 +525,141 @@ export default function DashboardPage() {
                   })}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Third row: civil status & voters, registration trend, upcoming summons */}
+      {detailed && (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Civil Status & Voters</CardTitle>
+              <CardDescription>Living residents</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                {(detailed.civilStatusDistribution || []).slice(0, 5).map((c, i) => {
+                  const pct = stats.totalResidents > 0 ? Math.round((c.count / stats.totalResidents) * 100) : 0;
+                  return (
+                    <div key={c.status} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium">{c.status}</span>
+                        <span className="text-muted-foreground">{c.count.toLocaleString()} ({pct}%)</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-secondary">
+                        <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: PIE_PALETTE[i % PIE_PALETTE.length] }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {detailed.voterStats && (
+                <div className="border-t pt-3">
+                  {(() => {
+                    const total = detailed.voterStats!.registered + detailed.voterStats!.notRegistered;
+                    const pct = total > 0 ? Math.round((detailed.voterStats!.registered / total) * 100) : 0;
+                    return (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1.5 font-medium"><Vote className="h-3.5 w-3.5 text-indigo-500" />Registered Voters</span>
+                          <span className="text-muted-foreground">{detailed.voterStats!.registered.toLocaleString()} of {total.toLocaleString()} ({pct}%)</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-secondary">
+                          <div className="h-2 rounded-full bg-indigo-500" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">New Residents</CardTitle>
+              <CardDescription>Records added in the last 12 months</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(detailed.monthlyRegistrations || []).length === 0 ? (
+                <p className="flex h-44 items-center justify-center text-sm text-muted-foreground">No new records this year</p>
+              ) : (
+                <div className="h-44">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={(detailed.monthlyRegistrations || []).map(m => ({
+                        name: new Date(m.month + '-01').toLocaleDateString('en-PH', { month: 'short' }),
+                        value: m.count,
+                      }))}
+                      margin={{ top: 5, right: 5, left: -15, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Bar dataKey="value" radius={[4, 4, 0, 0]} fill="#8b5cf6" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2"><CalendarClock className="h-4 w-4 text-blue-500" />Cases & Hearings</CardTitle>
+              <CardDescription>Upcoming summons and active cases</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <p className="px-6 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Upcoming Summons</p>
+              {(detailed.upcomingSummons || []).length === 0 ? (
+                <p className="px-6 pb-3 text-xs text-muted-foreground">No scheduled hearings. 🎉</p>
+              ) : (
+                <div className="divide-y border-b">
+                  {(detailed.upcomingSummons || []).slice(0, 3).map((su) => (
+                    <button
+                      key={su.id}
+                      type="button"
+                      onClick={() => router.push('/cases')}
+                      className="flex w-full items-center justify-between gap-2 px-6 py-2 text-left transition-colors hover:bg-muted/30"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium">{su.summoned_name || 'Resident'}</p>
+                        <p className="text-[11px] text-muted-foreground">Case {su.case_number}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-[11px] font-medium">{formatDate(su.summon_date)}</p>
+                        {su.summon_time && <p className="text-[10px] text-muted-foreground">{su.summon_time}</p>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="px-6 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Active Cases</p>
+              {(detailed.activeCases || []).length === 0 ? (
+                <p className="px-6 pb-4 text-xs text-muted-foreground">No pending or ongoing cases.</p>
+              ) : (
+                <div className="divide-y">
+                  {(detailed.activeCases || []).slice(0, 4).map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => router.push('/cases')}
+                      className="flex w-full items-center justify-between gap-2 px-6 py-2 text-left transition-colors hover:bg-muted/30"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium">{c.case_number} · <span className="capitalize">{c.case_type}</span></p>
+                        <p className="truncate text-[11px] text-muted-foreground">{c.parties || 'No parties recorded'}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium capitalize ${c.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                        {c.status}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

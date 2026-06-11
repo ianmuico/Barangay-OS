@@ -5,6 +5,7 @@ import { CategoryResidentsPage, type CategoryConfig } from '@/components/categor
 
 export default function FourPsPage() {
   const config: CategoryConfig = useMemo(() => ({
+    pageKey: 'four-ps',
     title: '4Ps Beneficiaries',
     description: 'Pantawid Pamilyang Pilipino Program beneficiaries',
     searchPlaceholder: 'Search 4Ps beneficiaries...',

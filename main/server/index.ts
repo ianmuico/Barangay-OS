@@ -3,20 +3,27 @@ import cors from 'cors';
 import { apiKeyAuth } from './middleware/apiKeyAuth';
 import { residentsRouter } from './routes/residents';
 import { healthRouter } from './routes/health';
+import { officialsRouter } from './routes/officials';
+import { statsRouter } from './routes/stats';
+
+// The server listens on 0.0.0.0 so other devices on the LAN can reach it.
+// Allow browser requests from localhost and private-network origins; everything
+// is still gated by the API key. Non-browser clients (curl, scripts, mobile
+// apps) send no Origin header and are unaffected by CORS.
+const PRIVATE_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|10(\.\d{1,3}){3}|192\.168(\.\d{1,3}){2}|172\.(1[6-9]|2\d|3[01])(\.\d{1,3}){2})(:\d+)?$/;
 
 export function createExpressApp(): express.Application {
   const app = express();
 
-  // Restrict CORS to localhost only
   app.use(cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (Electron, curl, etc.) or localhost
-      if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      if (!origin || PRIVATE_ORIGIN.test(origin)) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
       }
     },
+    allowedHeaders: ['Content-Type', 'X-API-Key'],
   }));
 
   app.use(express.json({ limit: '1mb' }));
@@ -26,6 +33,14 @@ export function createExpressApp(): express.Application {
   app.use((req, res, next) => {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
+
+    // Prune expired entries so the map can't grow unbounded
+    if (requestCounts.size > 500) {
+      for (const [key, value] of requestCounts) {
+        if (now > value.resetAt) requestCounts.delete(key);
+      }
+    }
+
     const entry = requestCounts.get(ip);
 
     if (!entry || now > entry.resetAt) {
@@ -54,6 +69,8 @@ export function createExpressApp(): express.Application {
 
   app.use('/api', healthRouter);
   app.use('/api', residentsRouter);
+  app.use('/api', officialsRouter);
+  app.use('/api', statsRouter);
 
   return app;
 }

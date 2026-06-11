@@ -42,9 +42,12 @@ export interface Resident {
   is_4ps: number;
   status: string;
   death_date?: string | null;
+  resident_uid?: string | null;
   created_at: string;
   updated_at: string;
   age?: number;
+  case_count?: number;
+  open_issues?: number;
 }
 
 export interface ResidentData {
@@ -109,16 +112,26 @@ export interface ReportTemplate {
   name: string;
   content_html: string;
   variables_json: string;
+  paper_json: string | null;
+  pages_json: string | null;
   watermark_path: string | null;
   created_by: number | null;
   created_at: string;
   updated_at: string;
 }
 
+export interface PaperSettings {
+  size: 'A4' | 'Letter' | 'Long';
+  orientation: 'portrait' | 'landscape';
+  margins: { top: number; bottom: number; left: number; right: number }; // inches
+}
+
 export interface TemplateData {
   name: string;
   content_html: string;
   variables_json?: string;
+  paper_json?: string | null;
+  pages_json?: string | null;
   watermark_path?: string | null;
 }
 
@@ -198,6 +211,14 @@ export interface DetailedStats {
   youthByAge: { category: string; count: number }[];
   youthByOccupation: { category: string; count: number }[];
   residentsByPurok: { purok: string; count: number }[];
+  civilStatusDistribution?: { status: string; count: number }[];
+  voterStats?: { registered: number; notRegistered: number };
+  monthlyRegistrations?: { month: string; count: number }[];
+  caseStats?: { total: number; pending: number; ongoing: number; resolved: number; dismissed: number };
+  householdCount?: number;
+  deceasedCount?: number;
+  upcomingSummons?: { id: number; case_number?: string; summon_date: string; summon_time: string | null; summoned_name?: string; status: string }[];
+  activeCases?: { id: number; case_number: string; case_type: string; status: string; filed_date: string; parties: string }[];
 }
 
 export interface AuditEntry {
@@ -239,13 +260,98 @@ export interface PartnerRelationship {
   partner_last_name: string;
 }
 
+export interface DocumentListItem {
+  id: number;
+  title: string | null;
+  template_name: string | null;
+  resident_id: number | null;
+  resident_name: string | null;
+  case_id: number | null;
+  case_number: string | null;
+  business_id: number | null;
+  business_name: string | null;
+  size_bytes: number;
+  generated_at: string;
+}
+
 export interface GeneratedReport {
   id: number;
   template_id: number | null;
   resident_id: number | null;
+  case_id: number | null;
+  business_id?: number | null;
+  title: string | null;
   content_html: string;
   generated_by: number | null;
   generated_at: string;
+  template_name?: string;
+  resident_name?: string;
+}
+
+export interface ResidentIssue {
+  id: number;
+  resident_id: number;
+  title: string;
+  details: string | null;
+  status: 'open' | 'resolved';
+  created_by: number | null;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export interface FlaggedResident {
+  id: number;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  suffix: string | null;
+  gender: string;
+  purok: string | null;
+  open_issues: number;
+  total_issues: number;
+  case_count: number;
+  latest_issue: string | null;
+  latest_issue_at: string | null;
+}
+
+export interface Business {
+  id: number;
+  name: string;
+  nature: string | null;
+  address: string | null;
+  purok: string | null;
+  status: 'active' | 'closed';
+  date_registered: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  owner_names?: string;
+}
+
+export interface BusinessOwner {
+  id: number;
+  business_id: number;
+  resident_id: number | null;
+  outside_owner_id: number | null;
+  name?: string;
+  is_outside?: number;
+}
+
+export interface OutsideOwner {
+  id: number;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  suffix: string | null;
+  gender: string | null;
+  birth_date: string | null;
+  address: string | null;
+  contact_number: string | null;
+  email: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  business_names?: string;
 }
 
 export interface PrintListOptions {
@@ -327,15 +433,38 @@ export interface ElectronAPI {
   deleteTemplate: (id: number) => Promise<{ success: boolean }>;
 
   getInputFields: (templateId: number) => Promise<string[]>;
-  generateReport: (templateId: number, residentId: number, inputValues?: Record<string, string>) => Promise<{ success: boolean; html?: string; reportId?: number; error?: string }>;
-  exportPDF: (html: string, filename: string) => Promise<{ success: boolean; path?: string; error?: string }>;
-  printReport: (html: string) => Promise<{ success: boolean; error?: string }>;
-  generateMultiReport: (templateIds: number[], residentId: number) => Promise<{ success: boolean; reports?: { templateName: string; html: string }[]; error?: string }>;
-  exportMultiPDF: (htmlPages: string[], filename: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+  generateReport: (templateId: number, residentId: number, inputValues?: Record<string, string>) => Promise<{ success: boolean; html?: string; reportId?: number; paper?: PaperSettings; error?: string }>;
+  exportPDF: (html: string, filename: string, paper?: PaperSettings) => Promise<{ success: boolean; path?: string; error?: string }>;
+  printReport: (html: string, paper?: PaperSettings) => Promise<{ success: boolean; error?: string }>;
+  generateMultiReport: (templateIds: number[], residentId: number) => Promise<{ success: boolean; reports?: { templateName: string; html: string; paper?: PaperSettings }[]; error?: string }>;
+  exportMultiPDF: (htmlPages: string[], filename: string, paper?: PaperSettings) => Promise<{ success: boolean; path?: string; error?: string }>;
   printList: (options: PrintListOptions) => Promise<{ success: boolean; path?: string; error?: string }>;
   printGroupedList: (options: PrintGroupedListOptions) => Promise<{ success: boolean; path?: string; error?: string }>;
   getGeneratedReports: (residentId?: number) => Promise<GeneratedReport[]>;
+  saveCaseDocument: (data: { case_id: number; title: string; content_html: string }) => Promise<number>;
+  saveDocument: (data: { id?: number; case_id?: number | null; resident_id?: number | null; business_id?: number | null; title: string; content_html: string }) => Promise<number>;
+  getDocument: (id: number) => Promise<GeneratedReport | undefined>;
+  deleteDocument: (id: number) => Promise<{ success: boolean }>;
+  listDocuments: (params?: { search?: string; type?: 'all' | 'resident' | 'case' | 'business'; page?: number; limit?: number }) => Promise<{ data: DocumentListItem[]; total: number; page: number; totalPages: number }>;
+  getCaseDocuments: (caseId: number) => Promise<GeneratedReport[]>;
+  getReportStorageStats: () => Promise<{ count: number; totalBytes: number; oldest: string | null }>;
+  cleanupGeneratedReports: (olderThanDays: number) => Promise<{ success: boolean; deleted: number }>;
+  getUpcomingSummons: (limit?: number) => Promise<{ id: number; case_id: number; case_number?: string; summon_date: string; summon_time: string | null; summoned_name?: string; status: string }[]>;
 
+  getResidentIssues: (residentId: number) => Promise<ResidentIssue[]>;
+  createResidentIssue: (data: { resident_id: number; title: string; details?: string | null }) => Promise<number>;
+  updateResidentIssue: (id: number, data: Partial<ResidentIssue>) => Promise<{ success: boolean }>;
+  deleteResidentIssue: (id: number) => Promise<{ success: boolean }>;
+  getFlaggedResidents: (search?: string) => Promise<FlaggedResident[]>;
+  getBusinesses: (params?: { search?: string; status?: string }) => Promise<Business[]>;
+  getBusinessOwners: (businessId: number) => Promise<BusinessOwner[]>;
+  createBusiness: (data: Partial<Business> & { name: string }, owners: { resident_id?: number | null; outside_owner_id?: number | null }[]) => Promise<number>;
+  updateBusiness: (id: number, data: Partial<Business>, owners?: { resident_id?: number | null; outside_owner_id?: number | null }[]) => Promise<{ success: boolean }>;
+  deleteBusiness: (id: number) => Promise<{ success: boolean }>;
+  getOutsideOwners: (search?: string) => Promise<OutsideOwner[]>;
+  createOutsideOwner: (data: Partial<OutsideOwner> & { first_name: string; last_name: string }) => Promise<number>;
+  updateOutsideOwner: (id: number, data: Partial<OutsideOwner>) => Promise<{ success: boolean }>;
+  deleteOutsideOwner: (id: number) => Promise<{ success: boolean }>;
   getOfficials: () => Promise<Official[]>;
   getOfficial: (id: number) => Promise<Official | null>;
   createOfficial: (data: OfficialData) => Promise<number>;
@@ -371,7 +500,7 @@ export interface ElectronAPI {
 
   // Danger Zone
   wipeDatabase: (pin: string) => Promise<{ success: boolean; error?: string }>;
-  fillTestData: (pin: string) => Promise<{ success: boolean; error?: string }>;
+  fillTestData: (pin: string, count?: number) => Promise<{ success: boolean; error?: string }>;
   reseedTemplates: (pin: string) => Promise<{ success: boolean; error?: string }>;
   setDangerZonePin: (currentPin: string, newPin: string) => Promise<{ success: boolean; error?: string }>;
 
@@ -381,6 +510,7 @@ export interface ElectronAPI {
   startServer: (port: number) => Promise<{ success: boolean; address?: string; port?: number; url?: string; error?: string }>;
   stopServer: () => Promise<{ success: boolean; error?: string }>;
   getServerStatus: () => Promise<ServerStatus>;
+  testServer: () => Promise<{ success: boolean; health?: unknown; stats?: unknown; error?: string }>;
 
   selectFile: (options: FileDialogOptions) => Promise<FileDialogResult>;
   saveFile: (options: FileDialogOptions) => Promise<SaveDialogResult>;
@@ -389,6 +519,7 @@ export interface ElectronAPI {
   saveLogo: (sourcePath: string) => Promise<string>;
   removeLogo: () => Promise<boolean>;
   getLogoBase64: () => Promise<string | null>;
+  getImageBase64: (imagePath: string) => Promise<string | null>;
 }
 
 declare global {

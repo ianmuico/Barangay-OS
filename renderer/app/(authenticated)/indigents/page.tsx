@@ -6,6 +6,7 @@ import { INDIGENT_GROUP_OPTIONS } from '@/components/category-print-dialog';
 
 export default function IndigentsPage() {
   const config: CategoryConfig = useMemo(() => ({
+    pageKey: 'indigents',
     title: 'Indigent Residents',
     description: 'Residents flagged as indigent for assistance programs',
     searchPlaceholder: 'Search indigent residents...',

@@ -5,6 +5,8 @@ export interface ReportTemplate {
   name: string;
   content_html: string;
   variables_json: string;
+  paper_json: string | null;
+  pages_json: string | null;
   created_by: number | null;
   created_at: string;
   updated_at: string;
@@ -24,12 +26,14 @@ export function createTemplate(data: {
   name: string;
   content_html: string;
   variables_json: string;
+  paper_json?: string | null;
+  pages_json?: string | null;
   created_by: number;
 }): number {
   const db = getDb();
   const result = db.prepare(
-    'INSERT INTO report_templates (name, content_html, variables_json, created_by) VALUES (?, ?, ?, ?)'
-  ).run(data.name, data.content_html, data.variables_json, data.created_by);
+    'INSERT INTO report_templates (name, content_html, variables_json, paper_json, pages_json, created_by) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(data.name, data.content_html, data.variables_json, data.paper_json ?? null, data.pages_json ?? null, data.created_by);
   return result.lastInsertRowid as number;
 }
 
@@ -37,6 +41,8 @@ export function updateTemplate(id: number, data: {
   name?: string;
   content_html?: string;
   variables_json?: string;
+  paper_json?: string | null;
+  pages_json?: string | null;
 }): void {
   const db = getDb();
   const fields: string[] = [];
@@ -45,6 +51,8 @@ export function updateTemplate(id: number, data: {
   if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
   if (data.content_html !== undefined) { fields.push('content_html = ?'); values.push(data.content_html); }
   if (data.variables_json !== undefined) { fields.push('variables_json = ?'); values.push(data.variables_json); }
+  if (data.paper_json !== undefined) { fields.push('paper_json = ?'); values.push(data.paper_json); }
+  if (data.pages_json !== undefined) { fields.push('pages_json = ?'); values.push(data.pages_json); }
 
   if (fields.length === 0) return;
 

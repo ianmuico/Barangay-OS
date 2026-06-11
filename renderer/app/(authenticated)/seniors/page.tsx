@@ -6,6 +6,7 @@ import { SENIOR_GROUP_OPTIONS } from '@/components/category-print-dialog';
 
 export default function SeniorsPage() {
   const config: CategoryConfig = useMemo(() => ({
+    pageKey: 'seniors',
     title: 'Senior Citizens',
     description: 'Residents aged 60 and above',
     searchPlaceholder: 'Search senior citizens...',

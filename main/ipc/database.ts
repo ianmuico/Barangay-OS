@@ -8,6 +8,8 @@ import * as reports from '../database/queries/reports';
 import * as settings from '../database/queries/settings';
 import * as households from '../database/queries/households';
 import * as audit from '../database/queries/audit';
+import * as issues from '../database/queries/issues';
+import * as businesses from '../database/queries/businesses';
 import * as officials from '../database/queries/officials';
 import { hashPasswordSync, verifyPasswordSync } from '../utils/hash';
 import { getCurrentSessionUser } from './auth';
@@ -200,6 +202,71 @@ export function registerDatabaseHandlers(): void {
     return reports.listGeneratedReports(residentId);
   });
 
+  // Custom/case documents: explicit saves AND every print/export is kept.
+  // Pass `id` to update an existing saved document in place.
+  ipcMain.handle('db:reports:saveDoc', async (_event, data: { id?: number; case_id?: number | null; resident_id?: number | null; business_id?: number | null; title: string; content_html: string }) => {
+    const user = getCurrentSessionUser();
+    if (data.id) {
+      reports.updateGeneratedReport(data.id, { title: data.title, content_html: data.content_html });
+      return data.id;
+    }
+    const id = reports.createGeneratedReport({
+      case_id: data.case_id ?? null,
+      resident_id: data.resident_id ?? null,
+      business_id: data.business_id ?? null,
+      title: data.title,
+      content_html: data.content_html,
+      generated_by: user?.id || 0,
+    });
+    audit.logAudit(user?.id || null, 'DOCUMENT_SAVED', `Saved "${data.title}"`);
+    return id;
+  });
+  // Back-compat alias
+  ipcMain.handle('db:reports:saveCaseDoc', async (_event, data: { case_id: number; title: string; content_html: string }) => {
+    const user = getCurrentSessionUser();
+    const id = reports.createGeneratedReport({
+      case_id: data.case_id,
+      title: data.title,
+      content_html: data.content_html,
+      generated_by: user?.id || 0,
+    });
+    audit.logAudit(user?.id || null, 'CASE_DOC_SAVED', `Saved "${data.title}"`);
+    return id;
+  });
+  ipcMain.handle('db:reports:get', async (_event, id: number) => {
+    return reports.getGeneratedReportById(id);
+  });
+  ipcMain.handle('db:reports:delete', async (_event, id: number) => {
+    requireAdmin();
+    reports.deleteGeneratedReport(id);
+    const user = getCurrentSessionUser();
+    audit.logAudit(user?.id || null, 'DOCUMENT_DELETED', `Deleted generated document #${id}`);
+    return { success: true };
+  });
+  ipcMain.handle('db:reports:listDocs', async (_event, params: { search?: string; type?: 'all' | 'resident' | 'case' | 'business'; page?: number; limit?: number }) => {
+    return reports.listDocuments(params || {});
+  });
+  ipcMain.handle('db:reports:listByCase', async (_event, caseId: number) => {
+    return reports.listCaseDocuments(caseId);
+  });
+
+  // Storage failsafe for generated documents
+  ipcMain.handle('db:reports:storageStats', async () => {
+    return reports.getReportStorageStats();
+  });
+  ipcMain.handle('db:reports:cleanup', async (_event, olderThanDays: number) => {
+    requireAdmin();
+    const deleted = reports.cleanupGeneratedReports(olderThanDays);
+    const user = getCurrentSessionUser();
+    audit.logAudit(user?.id || null, 'REPORTS_CLEANED', `Deleted ${deleted} generated documents older than ${olderThanDays} days`);
+    return { success: true, deleted };
+  });
+
+  // Upcoming summons (for reminders)
+  ipcMain.handle('db:summons:upcoming', async (_event, limit?: number) => {
+    return cases.getUpcomingSummons(limit || 50);
+  });
+
   // === Officials ===
   ipcMain.handle('db:officials:list', async () => {
     return officials.listOfficials();
@@ -254,6 +321,9 @@ export function registerDatabaseHandlers(): void {
   });
 
   ipcMain.handle('db:dashboard:detailed', async () => {
+    const db = (await import('../database/connection')).getDb();
+    const count = (sql: string): number => (db.prepare(sql).get() as { n: number }).n;
+
     return {
       genderDistribution: residents.getGenderDistribution(),
       ageDistribution: residents.getAgeDistribution(),
@@ -262,7 +332,93 @@ export function registerDatabaseHandlers(): void {
       youthByAge: residents.getYouthBreakdown(),
       youthByOccupation: residents.getYouthByOccupation(),
       residentsByPurok: residents.getResidentsByPurok(),
+      civilStatusDistribution: db.prepare(
+        "SELECT COALESCE(civil_status, 'Unknown') as status, COUNT(*) as count FROM residents WHERE status != 'deceased' GROUP BY civil_status ORDER BY count DESC"
+      ).all(),
+      voterStats: {
+        registered: count("SELECT COUNT(*) n FROM residents WHERE status != 'deceased' AND LOWER(COALESCE(voter_status,'')) = 'registered'"),
+        notRegistered: count("SELECT COUNT(*) n FROM residents WHERE status != 'deceased' AND LOWER(COALESCE(voter_status,'')) != 'registered'"),
+      },
+      monthlyRegistrations: db.prepare(
+        "SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count FROM residents WHERE created_at >= date('now', '-12 months') GROUP BY month ORDER BY month ASC"
+      ).all(),
+      caseStats: {
+        total: count('SELECT COUNT(*) n FROM cases'),
+        pending: count("SELECT COUNT(*) n FROM cases WHERE status = 'pending'"),
+        ongoing: count("SELECT COUNT(*) n FROM cases WHERE status = 'ongoing'"),
+        resolved: count("SELECT COUNT(*) n FROM cases WHERE status = 'resolved'"),
+        dismissed: count("SELECT COUNT(*) n FROM cases WHERE status = 'dismissed'"),
+      },
+      householdCount: count('SELECT COUNT(*) n FROM households'),
+      deceasedCount: count("SELECT COUNT(*) n FROM residents WHERE status = 'deceased'"),
+      upcomingSummons: cases.getUpcomingSummons(5),
+      activeCases: cases.listCases({}).filter(c => c.status === 'pending' || c.status === 'ongoing').slice(0, 6)
+        .map(c => ({
+          id: c.id, case_number: c.case_number, case_type: c.case_type, status: c.status,
+          filed_date: c.filed_date,
+          parties: [c.complainant_names || c.complainant_name, c.respondent_names || c.respondent_name].filter(Boolean).join(' vs '),
+        })),
     };
+  });
+
+  // === Resident issues (behavior flags) ===
+  ipcMain.handle('db:issues:list', async (_event, residentId: number) => {
+    return issues.listIssuesForResident(residentId);
+  });
+  ipcMain.handle('db:issues:create', async (_event, data: { resident_id: number; title: string; details?: string | null }) => {
+    const user = getCurrentSessionUser();
+    const id = issues.createIssue({ ...data, created_by: user?.id || 0 });
+    audit.logAudit(user?.id || null, 'ISSUE_CREATED', `Flagged resident #${data.resident_id}: ${data.title}`);
+    return id;
+  });
+  ipcMain.handle('db:issues:update', async (_event, id: number, data: any) => {
+    issues.updateIssue(id, data);
+    return { success: true };
+  });
+  ipcMain.handle('db:issues:delete', async (_event, id: number) => {
+    issues.deleteIssue(id);
+    return { success: true };
+  });
+  ipcMain.handle('db:issues:flagged', async (_event, search?: string) => {
+    return issues.listFlaggedResidents(search);
+  });
+
+  // === Businesses ===
+  ipcMain.handle('db:businesses:list', async (_event, params?: { search?: string; status?: string }) => {
+    return businesses.listBusinesses(params);
+  });
+  ipcMain.handle('db:businesses:owners', async (_event, businessId: number) => {
+    return businesses.getBusinessOwners(businessId);
+  });
+  ipcMain.handle('db:businesses:create', async (_event, data: any, owners: any[]) => {
+    const id = businesses.createBusiness(data, owners || []);
+    const user = getCurrentSessionUser();
+    audit.logAudit(user?.id || null, 'BUSINESS_CREATED', `Registered business "${data.name}"`);
+    return id;
+  });
+  ipcMain.handle('db:businesses:update', async (_event, id: number, data: any, owners?: any[]) => {
+    businesses.updateBusiness(id, data, owners);
+    return { success: true };
+  });
+  ipcMain.handle('db:businesses:delete', async (_event, id: number) => {
+    businesses.deleteBusiness(id);
+    return { success: true };
+  });
+
+  // === Outside owners ===
+  ipcMain.handle('db:outsiders:list', async (_event, search?: string) => {
+    return businesses.listOutsideOwners(search);
+  });
+  ipcMain.handle('db:outsiders:create', async (_event, data: any) => {
+    return businesses.createOutsideOwner(data);
+  });
+  ipcMain.handle('db:outsiders:update', async (_event, id: number, data: any) => {
+    businesses.updateOutsideOwner(id, data);
+    return { success: true };
+  });
+  ipcMain.handle('db:outsiders:delete', async (_event, id: number) => {
+    businesses.deleteOutsideOwner(id);
+    return { success: true };
   });
 
   // === Audit ===
@@ -283,6 +439,7 @@ export function registerDatabaseHandlers(): void {
 
   ipcMain.handle('file:saveAvatar', async (_event, userId: number, sourcePath: string) => {
     const avatarsDir = path.join(app.getPath('userData'), 'avatars');
+    if (!fs.existsSync(avatarsDir)) fs.mkdirSync(avatarsDir, { recursive: true });
     const ext = path.extname(sourcePath);
     const destPath = path.join(avatarsDir, `user_${userId}${ext}`);
     fs.copyFileSync(sourcePath, destPath);
@@ -292,11 +449,26 @@ export function registerDatabaseHandlers(): void {
 
   ipcMain.handle('file:saveResidentPhoto', async (_event, residentId: number, sourcePath: string) => {
     const photosDir = path.join(app.getPath('userData'), 'photos');
+    if (!fs.existsSync(photosDir)) fs.mkdirSync(photosDir, { recursive: true });
     const ext = path.extname(sourcePath);
     const destPath = path.join(photosDir, `resident_${residentId}${ext}`);
     fs.copyFileSync(sourcePath, destPath);
     residents.updateResident(residentId, { photo_path: destPath });
     return destPath;
+  });
+
+  // Read an image stored by the app and return it as a data URL for display.
+  // Restricted to the app's data folder so arbitrary files can't be read.
+  ipcMain.handle('file:getImageBase64', async (_event, imagePath: string) => {
+    if (!imagePath) return null;
+    const resolved = path.resolve(imagePath);
+    const userData = app.getPath('userData');
+    if (!resolved.startsWith(userData + path.sep)) return null;
+    if (!fs.existsSync(resolved)) return null;
+    const ext = path.extname(resolved).toLowerCase().replace('.', '');
+    const mime = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
+    const data = fs.readFileSync(resolved);
+    return `data:${mime};base64,${data.toString('base64')}`;
   });
 
   // === Barangay Logo ===
@@ -336,14 +508,21 @@ export function registerDatabaseHandlers(): void {
     return cases.getCaseById(id);
   });
   ipcMain.handle('db:cases:create', async (_event, data: any) => {
-    const id = cases.createCase(data);
+    const { parties, ...caseData } = data;
+    const id = cases.createCase(caseData);
+    if (Array.isArray(parties)) cases.setCaseParties(id, parties);
     const user = getCurrentSessionUser();
     audit.logAudit(user?.id || null, 'CASE_CREATED', `Created case`);
     return id;
   });
   ipcMain.handle('db:cases:update', async (_event, id: number, data: any) => {
-    cases.updateCase(id, data);
+    const { parties, ...caseData } = data;
+    cases.updateCase(id, caseData);
+    if (Array.isArray(parties)) cases.setCaseParties(id, parties);
     return { success: true };
+  });
+  ipcMain.handle('db:cases:parties', async (_event, caseId: number) => {
+    return cases.listCaseParties(caseId);
   });
   ipcMain.handle('db:cases:delete', async (_event, id: number) => {
     cases.deleteCase(id);
@@ -604,7 +783,7 @@ export function registerDatabaseHandlers(): void {
   });
 
   // Fill test dummy data — 800 residents with family relationships (admin-only)
-  ipcMain.handle('db:dangerzone:fillTestData', async (_event, pin: string) => {
+  ipcMain.handle('db:dangerzone:fillTestData', async (_event, pin: string, count?: number) => {
     requireAdmin();
     const storedHash = settings.getSetting('danger_zone_pin_hash');
     if (storedHash) {
@@ -710,18 +889,21 @@ export function registerDatabaseHandlers(): void {
 
       const transaction = db.transaction(() => {
         let totalCreated = 0;
-        const TARGET = 1000;
-        const families: { fatherId: number; motherId: number; lastName: string; purok: string }[] = [];
+        const TARGET = Math.min(8000, Math.max(100, Math.floor(count || 1000)));
+        // Phase 1 builds ~70% of the target as base families; ancestor and
+        // descendant chains (Phases 2a/2b) fill the rest with deep generations.
+        const PHASE1_TARGET = Math.floor(TARGET * 0.7);
+        const families: { fatherId: number; motherId: number; lastName: string; purok: string; fatherAge: number }[] = [];
+        const childRecords: { id: number; age: number; gender: string; lastName: string; purok: string }[] = [];
 
-        // Create ~170 family units — mix of regular (2-4 kids) and large (5-8 kids)
-        const NUM_FAMILIES = 170;
+        const NUM_FAMILIES = Math.ceil(PHASE1_TARGET / 5.5);
         let deceasedCount = 0;
         let seniorCount = 0;
         let youthCount = 0;
         let indigentCount = 0;
         let fourPsCount = 0;
 
-        for (let f = 0; f < NUM_FAMILIES && totalCreated < TARGET; f++) {
+        for (let f = 0; f < NUM_FAMILIES && totalCreated < PHASE1_TARGET; f++) {
           const familyName = pick(lastNames);
           const purok = String(randInt(1, numPuroks));
 
@@ -774,11 +956,11 @@ export function registerDatabaseHandlers(): void {
           linkPartnerStmt.run(motherId, fatherId);
           linkPartnerStmt.run(fatherId, motherId);
 
-          families.push({ fatherId, motherId, lastName: familyName, purok });
+          families.push({ fatherId, motherId, lastName: familyName, purok, fatherAge: parentAge });
 
           // Children — large families get 5-8, normal get 2-4
           const numChildren = isLargeFamily ? randInt(5, 8) : randInt(2, 4);
-          for (let c = 0; c < numChildren && totalCreated < TARGET; c++) {
+          for (let c = 0; c < numChildren && totalCreated < PHASE1_TARGET; c++) {
             const childAge = randInt(1, Math.max(2, parentAge - 18));
             const childGender = Math.random() < 0.5 ? 'Male' : 'Female';
             const childFirstNames = childGender === 'Male' ? maleFirst : femaleFirst;
@@ -808,55 +990,141 @@ export function registerDatabaseHandlers(): void {
             totalCreated++;
 
             linkParentStmt.run(motherId, fatherId, childId);
+            childRecords.push({ id: childId, age: childAge, gender: childGender, lastName: familyName, purok });
           }
         }
 
-        // ─── Phase 2: Create grandparent relationships ────────────
-        const grandparentCount = Math.min(40, Math.floor(families.length / 3));
-        for (let g = 0; g < grandparentCount && totalCreated < TARGET + 120; g++) {
-          const childFamily = families[g];
-          const gpPurok = childFamily.purok;
-          const gpLastName = childFamily.lastName;
-
-          const gpAge = randInt(65, 90);
-          seniorCount += 2;
+        // ─── Phase 2a: Multi-generation ancestor chains ────────────
+        // Builds lineages 1-4 generations UP from family fathers so deep
+        // family trees can be tested. Very old ancestors are recorded as
+        // deceased with a death date.
+        const makeAncestorPair = (childId: number, childAge: number, lastName: string, purok: string): { fatherId: number; age: number } | null => {
+          if (totalCreated >= TARGET) return null;
+          const gpAge = childAge + randInt(20, 28);
+          if (gpAge > 110) return null;
+          const fatherDeceased = gpAge > 88 || (gpAge > 75 && Math.random() < 0.3);
+          const motherDeceased = gpAge > 90 || (gpAge > 75 && Math.random() < 0.25);
 
           const gpFatherResult = insertStmt.run(
-            pick(maleFirst), pick(middleNames), gpLastName, null,
+            pick(maleFirst), pick(middleNames), lastName, null,
             birthDateForAge(gpAge), 'Male',
-            Math.random() < 0.3 ? 'Widowed' : 'Married', `Purok ${gpPurok}`, gpPurok,
-            `09${randInt(100000000, 999999999)}`,
-            Math.random() < 0.5 ? 'Retired' : pick(occupations),
-            Math.random() < 0.25 ? 1 : 0, 'Registered',
-            0, 'living', null,
+            motherDeceased ? 'Widowed' : 'Married', `Purok ${purok}`, purok,
+            fatherDeceased ? null : `09${randInt(100000000, 999999999)}`,
+            fatherDeceased ? null : (Math.random() < 0.6 ? 'Retired' : pick(occupations)),
+            Math.random() < 0.25 ? 1 : 0, fatherDeceased ? 'Not Registered' : 'Registered',
+            0, fatherDeceased ? 'deceased' : 'living', fatherDeceased ? recentDate(randInt(6, 120)) : null,
             pick(religions), 'Filipino', pick(educations)
           );
           const gpFatherId = gpFatherResult.lastInsertRowid as number;
           allResidentIds.push(gpFatherId);
           totalCreated++;
+          if (!fatherDeceased && gpAge >= 60) seniorCount++;
+          if (fatherDeceased) deceasedCount++;
 
+          const gpMotherAge = gpAge - randInt(-2, 3);
           const gpMotherResult = insertStmt.run(
             pick(femaleFirst), pick(middleNames), pick(lastNames), null,
-            birthDateForAge(gpAge - randInt(-2, 3)), 'Female',
-            Math.random() < 0.3 ? 'Widowed' : 'Married', `Purok ${gpPurok}`, gpPurok,
-            `09${randInt(100000000, 999999999)}`,
-            Math.random() < 0.6 ? 'Retired' : pick(occupations),
-            Math.random() < 0.25 ? 1 : 0, 'Registered',
-            0, 'living', null,
+            birthDateForAge(Math.max(40, gpMotherAge)), 'Female',
+            fatherDeceased ? 'Widowed' : 'Married', `Purok ${purok}`, purok,
+            motherDeceased ? null : `09${randInt(100000000, 999999999)}`,
+            motherDeceased ? null : (Math.random() < 0.6 ? 'Retired' : pick(occupations)),
+            Math.random() < 0.25 ? 1 : 0, motherDeceased ? 'Not Registered' : 'Registered',
+            0, motherDeceased ? 'deceased' : 'living', motherDeceased ? recentDate(randInt(6, 120)) : null,
             pick(religions), 'Filipino', pick(educations)
           );
           const gpMotherId = gpMotherResult.lastInsertRowid as number;
           allResidentIds.push(gpMotherId);
           totalCreated++;
+          if (!motherDeceased && gpMotherAge >= 60) seniorCount++;
+          if (motherDeceased) deceasedCount++;
 
           linkPartnerStmt.run(gpMotherId, gpFatherId);
           linkPartnerStmt.run(gpFatherId, gpMotherId);
-          linkParentStmt.run(gpMotherId, gpFatherId, childFamily.fatherId);
+          linkParentStmt.run(gpMotherId, gpFatherId, childId);
+          return { fatherId: gpFatherId, age: gpAge };
+        };
+
+        const ancestorChainFamilies = Math.max(10, Math.floor(families.length / 3));
+        for (let g = 0; g < ancestorChainFamilies && totalCreated < TARGET; g++) {
+          const fam = families[g];
+          const chainLevels = randInt(1, 4);
+          let currentId = fam.fatherId;
+          let currentAge = fam.fatherAge;
+          for (let lv = 0; lv < chainLevels; lv++) {
+            const next = makeAncestorPair(currentId, currentAge, fam.lastName, fam.purok);
+            if (!next) break;
+            currentId = next.fatherId;
+            currentAge = next.age;
+          }
         }
 
-        // ─── Phase 3: Mark ~15 residents as deceased with death dates ──
+        // ─── Phase 2b: Married children with families of their own (chains DOWN) ──
+        const makeDescendants = (parent: { id: number; age: number; gender: string; lastName: string; purok: string }, depthLeft: number) => {
+          if (depthLeft <= 0 || parent.age < 22 || totalCreated >= TARGET) return;
+
+          const spouseGender = parent.gender === 'Male' ? 'Female' : 'Male';
+          const spouseAge = Math.max(20, parent.age + randInt(-4, 4));
+          const spouseResult = insertStmt.run(
+            pick(spouseGender === 'Male' ? maleFirst : femaleFirst), pick(middleNames),
+            spouseGender === 'Female' && Math.random() < 0.7 ? parent.lastName : pick(lastNames), null,
+            birthDateForAge(spouseAge), spouseGender,
+            'Married', `Purok ${parent.purok}`, parent.purok,
+            `09${randInt(100000000, 999999999)}`,
+            pick(occupations),
+            Math.random() < 0.15 ? 1 : 0, Math.random() > 0.2 ? 'Registered' : 'Not Registered',
+            0, 'living', null,
+            pick(religions), 'Filipino', pick(educations)
+          );
+          const spouseId = spouseResult.lastInsertRowid as number;
+          allResidentIds.push(spouseId);
+          totalCreated++;
+          if (spouseAge >= 60) seniorCount++;
+
+          db.prepare("UPDATE residents SET civil_status = 'Married' WHERE id = ?").run(parent.id);
+          linkPartnerStmt.run(spouseId, parent.id);
+          linkPartnerStmt.run(parent.id, spouseId);
+
+          const motherId = parent.gender === 'Female' ? parent.id : spouseId;
+          const fatherId = parent.gender === 'Male' ? parent.id : spouseId;
+
+          const numKids = randInt(1, 3);
+          for (let k = 0; k < numKids && totalCreated < TARGET; k++) {
+            const kidAge = Math.max(0, randInt(0, parent.age - 20));
+            const kidGender = Math.random() < 0.5 ? 'Male' : 'Female';
+            if (kidAge >= 15 && kidAge <= 30) youthCount++;
+            const kidResult = insertStmt.run(
+              pick(kidGender === 'Male' ? maleFirst : femaleFirst), pick(middleNames), parent.lastName, null,
+              birthDateForAge(kidAge), kidGender,
+              'Single', `Purok ${parent.purok}`, parent.purok,
+              kidAge >= 15 ? `09${randInt(100000000, 999999999)}` : null,
+              kidAge >= 15 && kidAge <= 22 ? 'Student' : (kidAge > 22 ? pick(occupations) : null),
+              Math.random() < 0.15 ? 1 : 0, kidAge >= 18 && Math.random() > 0.3 ? 'Registered' : 'Not Registered',
+              0, 'living', null,
+              pick(religions), 'Filipino', kidAge >= 6 ? pick(educations) : null
+            );
+            const kidId = kidResult.lastInsertRowid as number;
+            allResidentIds.push(kidId);
+            totalCreated++;
+            linkParentStmt.run(motherId, fatherId, kidId);
+
+            // Sometimes the chain continues another generation down
+            if (kidAge >= 22 && Math.random() < 0.5) {
+              makeDescendants({ id: kidId, age: kidAge, gender: kidGender, lastName: parent.lastName, purok: parent.purok }, depthLeft - 1);
+            }
+          }
+        };
+
+        for (const child of childRecords) {
+          if (totalCreated >= TARGET) break;
+          if (child.age >= 25 && Math.random() < 0.35) {
+            makeDescendants(child, randInt(1, 3));
+          }
+        }
+
+        // ─── Phase 3: Mark additional residents as deceased ──
         const deceasedCandidates = allResidentIds.slice();
-        for (let d = 0; d < 15 && deceasedCandidates.length > 0; d++) {
+        const extraDeceased = Math.max(10, Math.floor(TARGET * 0.015));
+        for (let d = 0; d < extraDeceased && deceasedCandidates.length > 0; d++) {
           const idx = randInt(0, deceasedCandidates.length - 1);
           const resId = deceasedCandidates.splice(idx, 1)[0];
           const deathDate = recentDate(36); // died within last 3 years
@@ -933,6 +1201,14 @@ export function registerDatabaseHandlers(): void {
             caseStatus
           );
           const caseId = db.prepare("SELECT last_insert_rowid() as id").get() as { id: number };
+
+          // Register parties — occasionally with multiple complainants/respondents
+          const partyStmt = db.prepare("INSERT INTO case_parties (case_id, resident_id, role) VALUES (?, ?, ?)");
+          partyStmt.run(caseId.id, livingIds[complainantIdx].id, 'complainant');
+          partyStmt.run(caseId.id, livingIds[respondentIdx].id, 'respondent');
+          if (Math.random() < 0.3 && livingIds.length > respondentIdx + 1) {
+            partyStmt.run(caseId.id, livingIds[(respondentIdx + randInt(1, 5)) % livingIds.length].id, 'respondent');
+          }
 
           // Each case gets 1-3 summons
           const numSummons = randInt(1, 3);

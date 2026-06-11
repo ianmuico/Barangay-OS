@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { TableSkeleton } from '@/components/skeletons';
 import { ResidentForm } from '@/components/resident-form';
 import { ReportGenerateDialog } from '@/components/report-generate-dialog';
+import { ResidentDetailDialog } from '@/components/resident-detail-dialog';
 import { PrintListDialog } from '@/components/print-list-dialog';
 import { PageHeader } from '@/components/page-header';
 import { usePageSearch } from '@/hooks/use-page-search';
@@ -46,6 +47,8 @@ export default function ResidentsPage() {
   const [editResident, setEditResident] = useState<Resident | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [reportResident, setReportResident] = useState<Resident | null>(null);
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [printListOpen, setPrintListOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -135,10 +138,33 @@ export default function ResidentsPage() {
         ),
     },
     {
+      id: 'flags',
+      header: 'Flags',
+      cell: ({ row }) => {
+        const cases = row.original.case_count || 0;
+        const issues = row.original.open_issues || 0;
+        if (!cases && !issues) return <span className="text-muted-foreground text-xs">—</span>;
+        return (
+          <div className="flex gap-1">
+            {cases > 0 && (
+              <span title={`${cases} case${cases > 1 ? 's' : ''} on record`} className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                ⚖ {cases}
+              </span>
+            )}
+            {issues > 0 && (
+              <span title={`${issues} open issue${issues > 1 ? 's' : ''}`} className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                ⚑ {issues}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       id: 'actions',
       header: 'Actions',
       cell: ({ row }) => (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <Button
             variant="ghost"
             size="icon"
@@ -198,6 +224,7 @@ export default function ResidentsPage() {
           totalPages={result?.totalPages || 1}
           onPageChange={setPage}
           total={result?.total}
+          onRowClick={(r) => { setDetailId(r.id); setDetailOpen(true); }}
           toolbar={
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setImportOpen(true)}>
@@ -256,8 +283,11 @@ export default function ResidentsPage() {
           open={!!reportResident}
           onClose={() => setReportResident(null)}
           resident={reportResident}
+          pageKey="residents"
         />
       )}
+
+      <ResidentDetailDialog residentId={detailId} open={detailOpen} onOpenChange={setDetailOpen} />
 
       <PrintListDialog open={printListOpen} onClose={() => setPrintListOpen(false)} />
 

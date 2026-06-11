@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Plus,
   Search,
@@ -13,6 +14,7 @@ import {
   XCircle,
   AlertCircle,
   FileText,
+  FilePlus2,
   Printer,
   FileDown,
   Eye,
@@ -51,8 +53,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { getAPI, type Resident } from '@/lib/ipc';
+import { getAPI, type Resident, type ReportTemplate } from '@/lib/ipc';
 import { invalidateCache } from '@/lib/cache';
+import { templateVisibleOn } from '@/lib/constants';
+import { ResidentDetailDialog } from '@/components/resident-detail-dialog';
+import { PaperPreview } from '@/components/paper-preview';
 import { toast } from 'sonner';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -72,6 +77,21 @@ interface CaseRecord {
   updated_at: string;
   complainant_name?: string;
   respondent_name?: string;
+  complainant_names?: string;
+  respondent_names?: string;
+}
+
+interface PartyRef {
+  id: number;
+  name: string;
+}
+
+// Aggregated parties list with legacy single-party fallback
+function complainantsOf(c: CaseRecord): string {
+  return c.complainant_names || c.complainant_name || '';
+}
+function respondentsOf(c: CaseRecord): string {
+  return c.respondent_names || c.respondent_name || '';
 }
 
 interface SummonRecord {
@@ -168,6 +188,93 @@ function PersonSearchInput({
   );
 }
 
+// ─── MultiPersonSearchInput ─────────────────────────────────────────────────
+
+function MultiPersonSearchInput({
+  label,
+  selected,
+  onAdd,
+  onRemove,
+}: {
+  label: string;
+  selected: PartyRef[];
+  onAdd: (r: Resident) => void;
+  onRemove: (id: number) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Resident[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSearch = useCallback((value: string) => {
+    setQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!value.trim()) {
+      setResults([]);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      const api = getAPI() as any;
+      if (!api) return;
+      const res = await api.searchResidents(value.trim(), 10);
+      setResults(res);
+    }, 300);
+  }, []);
+
+  const select = (r: Resident) => {
+    onAdd(r);
+    setQuery('');
+    setResults([]);
+  };
+
+  const selectedIds = new Set(selected.map(s => s.id));
+
+  return (
+    <div className="space-y-2">
+      <Label>{label} {selected.length > 1 && <span className="text-xs text-muted-foreground">({selected.length})</span>}</Label>
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selected.map((p) => (
+            <span key={p.id} className="inline-flex items-center gap-1 rounded-full border bg-muted/50 py-0.5 pl-2.5 pr-1 text-sm">
+              {p.name}
+              <button
+                type="button"
+                onClick={() => onRemove(p.id)}
+                className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-muted-foreground/20"
+                title="Remove"
+              >
+                <XCircle className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder={selected.length ? 'Add another resident...' : 'Search resident...'}
+          className="pl-9"
+          value={query}
+          onChange={(e) => handleSearch(e.target.value)}
+        />
+      </div>
+      {results.length > 0 && (
+        <div className="rounded-md border max-h-40 overflow-y-auto">
+          {results.filter(r => !selectedIds.has(r.id)).map((r) => (
+            <button
+              key={r.id}
+              className="w-full text-left px-3 py-2 hover:bg-accent text-sm transition-colors border-b last:border-b-0"
+              onClick={() => select(r)}
+            >
+              {r.first_name} {r.last_name}
+              {r.suffix ? ` ${r.suffix}` : ''}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Badge Helpers ──────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
@@ -234,6 +341,11 @@ function formatDate(d: string | null | undefined): string {
 
 export default function CasesPage() {
   const api = getAPI() as any;
+  const router = useRouter();
+
+  // Custom document template picker
+  const [customDocOpen, setCustomDocOpen] = useState(false);
+  const [docTemplates, setDocTemplates] = useState<ReportTemplate[]>([]);
 
   // List state
   const [cases, setCases] = useState<CaseRecord[]>([]);
@@ -248,16 +360,19 @@ export default function CasesPage() {
 
   // Case form
   const [formType, setFormType] = useState('mediation');
-  const [formComplainantId, setFormComplainantId] = useState<number | null>(null);
-  const [formComplainantName, setFormComplainantName] = useState('');
-  const [formRespondentId, setFormRespondentId] = useState<number | null>(null);
-  const [formRespondentName, setFormRespondentName] = useState('');
+  const [formComplainants, setFormComplainants] = useState<PartyRef[]>([]);
+  const [formRespondents, setFormRespondents] = useState<PartyRef[]>([]);
   const [formDescription, setFormDescription] = useState('');
   const [formFiledDate, setFormFiledDate] = useState('');
 
   // Detail dialog
   const [detailCase, setDetailCase] = useState<CaseRecord | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [detailParties, setDetailParties] = useState<{ id: number; resident_id: number | null; role: string; name: string }[]>([]);
+  const [residentDetailId, setResidentDetailId] = useState<number | null>(null);
+  const [residentDetailOpen, setResidentDetailOpen] = useState(false);
+  const [caseDocs, setCaseDocs] = useState<{ id: number; title: string | null; generated_at: string; content_html: string }[]>([]);
+  const [previewedDocId, setPreviewedDocId] = useState<number | null>(null);
   const [summons, setSummons] = useState<SummonRecord[]>([]);
 
   // Summon form
@@ -339,8 +454,8 @@ export default function CasesPage() {
       <table style="width:100%;border-collapse:collapse;font-size:11pt;">
         <tr><td style="padding:6px;border:1px solid #000;width:30%;font-weight:bold;">Case Number</td><td style="padding:6px;border:1px solid #000;">${detailCase.case_number}</td></tr>
         <tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Type</td><td style="padding:6px;border:1px solid #000;">${detailCase.case_type}</td></tr>
-        <tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Complainant</td><td style="padding:6px;border:1px solid #000;">${detailCase.complainant_name || '-'}</td></tr>
-        <tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Respondent</td><td style="padding:6px;border:1px solid #000;">${detailCase.respondent_name || '-'}</td></tr>
+        <tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Complainant</td><td style="padding:6px;border:1px solid #000;">${complainantsOf(detailCase) || '-'}</td></tr>
+        <tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Respondent</td><td style="padding:6px;border:1px solid #000;">${respondentsOf(detailCase) || '-'}</td></tr>
         <tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Filed Date</td><td style="padding:6px;border:1px solid #000;">${detailCase.filed_date}</td></tr>
         <tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Status</td><td style="padding:6px;border:1px solid #000;">${detailCase.status.toUpperCase()}</td></tr>
         ${detailCase.description ? `<tr><td style="padding:6px;border:1px solid #000;font-weight:bold;">Description</td><td style="padding:6px;border:1px solid #000;">${detailCase.description}</td></tr>` : ''}
@@ -373,10 +488,24 @@ export default function CasesPage() {
   // Open the document preview
   const handleViewCaseDocument = async () => {
     const html = await buildCaseDocHtml();
+    setPreviewedDocId(null);
     if (html) {
       setCaseDocTitle(`Case ${detailCase?.case_number || ''}`);
       setCaseDocHtml(html);
     }
+  };
+
+  // Keep a copy of every printed/exported case document on the case
+  const savedDocRef = useRef('');
+  const saveCaseDoc = async () => {
+    if (!api || !caseDocHtml || !detailCase || savedDocRef.current === caseDocHtml) return;
+    if (previewedDocId) return; // already a saved document — don't duplicate
+    try {
+      const id = await api.saveDocument({ case_id: detailCase.id, title: caseDocTitle, content_html: caseDocHtml });
+      setPreviewedDocId(id);
+      savedDocRef.current = caseDocHtml;
+      setCaseDocs(await api.getCaseDocuments(detailCase.id));
+    } catch { /* best-effort */ }
   };
 
   // Print from preview
@@ -384,6 +513,7 @@ export default function CasesPage() {
     if (!api || !caseDocHtml) return;
     setDocPrinting(true);
     try {
+      await saveCaseDoc();
       const result = await api.printReport(caseDocHtml);
       if (result.success) toast.success('Print dialog opened');
       else toast.error(result.error || 'Print failed');
@@ -392,11 +522,21 @@ export default function CasesPage() {
     }
   };
 
+  // Hand the generated document to the page editor for free editing
+  const handleEditCaseDoc = () => {
+    if (!caseDocHtml || !detailCase) return;
+    sessionStorage.setItem('caseDocDraft', JSON.stringify({ html: caseDocHtml, title: caseDocTitle, reportId: previewedDocId }));
+    setCaseDocHtml(null);
+    setDetailOpen(false);
+    router.push(`/documents/editor?caseId=${detailCase.id}&draft=1`);
+  };
+
   // Save as PDF from preview
   const handleExportCaseDoc = async () => {
     if (!api || !caseDocHtml) return;
     setDocExporting(true);
     try {
+      await saveCaseDoc();
       const filename = `Case_${detailCase?.case_number || 'record'}_${Date.now()}`;
       const result = await api.exportPDF(caseDocHtml, filename);
       if (result.success) toast.success('PDF saved');
@@ -438,7 +578,7 @@ export default function CasesPage() {
       </div>
 
       <p style="margin-top:20px;">To:</p>
-      <p style="margin:4px 0 16px;font-weight:bold;font-size:12pt;">${s.summoned_name || detailCase.respondent_name || '___________________________'}</p>
+      <p style="margin:4px 0 16px;font-weight:bold;font-size:12pt;">${s.summoned_name || respondentsOf(detailCase) || '___________________________'}</p>
 
       <p style="text-indent:40px;margin-bottom:12px;">
         You are hereby summoned to appear before the Lupong Tagapamayapa of
@@ -446,7 +586,7 @@ export default function CasesPage() {
         ${settings.municipality || '___________'}, ${settings.province || '___________'}
         on <strong>${hearingDate}</strong> at <strong>${hearingTime}</strong>
         to answer for a <strong>${detailCase.case_type}</strong> case
-        ${detailCase.complainant_name ? `filed against you by <strong>${detailCase.complainant_name}</strong>` : 'filed against you'}.
+        ${complainantsOf(detailCase) ? `filed against you by <strong>${complainantsOf(detailCase)}</strong>` : 'filed against you'}.
       </p>
 
       ${detailCase.description ? `
@@ -479,10 +619,18 @@ export default function CasesPage() {
 
   const handleViewSummonsNotice = async (s: SummonRecord) => {
     const html = await buildSummonsNoticeHtml(s);
+    setPreviewedDocId(null);
     if (html) {
       setCaseDocTitle(`Summons Notice — Case ${detailCase?.case_number} / Summon #${s.summon_number}`);
       setCaseDocHtml(html);
     }
+  };
+
+  // ─── Custom Document (template or scratch, edited in the paper editor) ──
+  const openCustomDoc = async () => {
+    if (!api) return;
+    try { setDocTemplates((await api.getTemplates()).filter((t: ReportTemplate) => templateVisibleOn(t, 'cases'))); } catch { setDocTemplates([]); }
+    setCustomDocOpen(true);
   };
 
   // ─── Complaint Narrative ────────────────────────────────────────────────
@@ -525,8 +673,8 @@ export default function CasesPage() {
         <table style="width:100%;border-collapse:collapse;font-size:11pt;margin-bottom:16px;">
           <tr><td style="padding:5px;border:1px solid #000;width:35%;font-weight:bold;">Case Number</td><td style="padding:5px;border:1px solid #000;">${detailCase.case_number}</td></tr>
           <tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Type of Case</td><td style="padding:5px;border:1px solid #000;">${detailCase.case_type}</td></tr>
-          <tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Complainant</td><td style="padding:5px;border:1px solid #000;">${detailCase.complainant_name || '—'}</td></tr>
-          <tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Respondent</td><td style="padding:5px;border:1px solid #000;">${detailCase.respondent_name || '—'}</td></tr>
+          <tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Complainant</td><td style="padding:5px;border:1px solid #000;">${complainantsOf(detailCase) || '—'}</td></tr>
+          <tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Respondent</td><td style="padding:5px;border:1px solid #000;">${respondentsOf(detailCase) || '—'}</td></tr>
           <tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Date Filed</td><td style="padding:5px;border:1px solid #000;">${new Date(detailCase.filed_date).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}</td></tr>
           <tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Status</td><td style="padding:5px;border:1px solid #000;">${detailCase.status.toUpperCase()}</td></tr>
           ${pbName ? `<tr><td style="padding:5px;border:1px solid #000;font-weight:bold;">Official In Charge</td><td style="padding:5px;border:1px solid #000;">${pbName} — ${pbPosition}</td></tr>` : ''}
@@ -572,6 +720,7 @@ export default function CasesPage() {
       `;
 
       setNarrativeOpen(false);
+      setPreviewedDocId(null);
       setCaseDocTitle(`Complaint Narrative — Case ${detailCase.case_number}`);
       setCaseDocHtml(html);
     } finally {
@@ -583,10 +732,8 @@ export default function CasesPage() {
 
   const resetCaseForm = () => {
     setFormType('mediation');
-    setFormComplainantId(null);
-    setFormComplainantName('');
-    setFormRespondentId(null);
-    setFormRespondentName('');
+    setFormComplainants([]);
+    setFormRespondents([]);
     setFormDescription('');
     setFormFiledDate(new Date().toISOString().split('T')[0]);
   };
@@ -597,15 +744,22 @@ export default function CasesPage() {
     setCaseDialogOpen(true);
   };
 
-  const openEditCase = (c: CaseRecord) => {
+  const openEditCase = async (c: CaseRecord) => {
     setEditCase(c);
     setFormType(c.case_type);
-    setFormComplainantId(c.complainant_id);
-    setFormComplainantName(c.complainant_name || '');
-    setFormRespondentId(c.respondent_id);
-    setFormRespondentName(c.respondent_name || '');
     setFormDescription(c.description || '');
     setFormFiledDate(c.filed_date);
+    // Load all parties (falls back to the legacy single-party columns for old cases)
+    try {
+      const parties = await api.getCaseParties(c.id);
+      const complainants = parties.filter((p: any) => p.role === 'complainant' && p.resident_id).map((p: any) => ({ id: p.resident_id, name: p.name }));
+      const respondents = parties.filter((p: any) => p.role === 'respondent' && p.resident_id).map((p: any) => ({ id: p.resident_id, name: p.name }));
+      setFormComplainants(complainants.length || !c.complainant_id ? complainants : [{ id: c.complainant_id, name: c.complainant_name || '' }]);
+      setFormRespondents(respondents.length || !c.respondent_id ? respondents : [{ id: c.respondent_id, name: c.respondent_name || '' }]);
+    } catch {
+      setFormComplainants(c.complainant_id ? [{ id: c.complainant_id, name: c.complainant_name || '' }] : []);
+      setFormRespondents(c.respondent_id ? [{ id: c.respondent_id, name: c.respondent_name || '' }] : []);
+    }
     setCaseDialogOpen(true);
   };
 
@@ -613,12 +767,17 @@ export default function CasesPage() {
     if (!api) return;
     setSaving(true);
     try {
+      const parties = [
+        ...formComplainants.map(p => ({ resident_id: p.id, role: 'complainant' })),
+        ...formRespondents.map(p => ({ resident_id: p.id, role: 'respondent' })),
+      ];
       const data = {
         case_type: formType,
-        complainant_id: formComplainantId,
-        respondent_id: formRespondentId,
+        complainant_id: formComplainants[0]?.id ?? null,
+        respondent_id: formRespondents[0]?.id ?? null,
         description: formDescription || null,
         filed_date: formFiledDate || new Date().toISOString().split('T')[0],
+        parties,
       };
 
       if (editCase) {
@@ -626,8 +785,8 @@ export default function CasesPage() {
         toast.success('Case updated');
         // Refresh detail if open
         if (detailCase?.id === editCase.id) {
-          const updated = { ...detailCase, ...data, complainant_name: formComplainantName, respondent_name: formRespondentName };
-          setDetailCase(updated);
+          const refreshed = await api.getCase(editCase.id);
+          if (refreshed) setDetailCase(refreshed);
         }
       } else {
         await api.createCase(data);
@@ -666,7 +825,15 @@ export default function CasesPage() {
   const openDetail = async (c: CaseRecord) => {
     setDetailCase(c);
     setDetailOpen(true);
+    try { setDetailParties(await api.getCaseParties(c.id)); } catch { setDetailParties([]); }
+    try { setCaseDocs(await api.getCaseDocuments(c.id)); } catch { setCaseDocs([]); }
     await fetchSummons(c.id);
+  };
+
+  const openResidentDetail = (residentId: number | null) => {
+    if (!residentId) return;
+    setResidentDetailId(residentId);
+    setResidentDetailOpen(true);
   };
 
   // ─── Resolve / Dismiss ─────────────────────────────────────────────────
@@ -844,8 +1011,8 @@ export default function CasesPage() {
                 >
                   <td className="px-4 py-3 font-mono text-sm">{c.case_number}</td>
                   <td className="px-4 py-3"><TypeBadge type={c.case_type} /></td>
-                  <td className="px-4 py-3 truncate max-w-[160px]">{c.complainant_name || <span className="text-muted-foreground">-</span>}</td>
-                  <td className="px-4 py-3 truncate max-w-[160px]">{c.respondent_name || <span className="text-muted-foreground">-</span>}</td>
+                  <td className="px-4 py-3 truncate max-w-[160px]" title={complainantsOf(c)}>{complainantsOf(c) || <span className="text-muted-foreground">-</span>}</td>
+                  <td className="px-4 py-3 truncate max-w-[160px]" title={respondentsOf(c)}>{respondentsOf(c) || <span className="text-muted-foreground">-</span>}</td>
                   <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
                   <td className="px-4 py-3 text-muted-foreground">{formatDate(c.filed_date)}</td>
                   <td className="px-4 py-3 text-right">
@@ -890,20 +1057,18 @@ export default function CasesPage() {
               </Select>
             </div>
 
-            <PersonSearchInput
-              label="Complainant"
-              selectedId={formComplainantId}
-              selectedName={formComplainantName}
-              onSelect={(r) => { setFormComplainantId(r.id); setFormComplainantName(residentDisplayName(r)); }}
-              onClear={() => { setFormComplainantId(null); setFormComplainantName(''); }}
+            <MultiPersonSearchInput
+              label="Complainants"
+              selected={formComplainants}
+              onAdd={(r) => setFormComplainants(prev => prev.some(p => p.id === r.id) ? prev : [...prev, { id: r.id, name: residentDisplayName(r) }])}
+              onRemove={(id) => setFormComplainants(prev => prev.filter(p => p.id !== id))}
             />
 
-            <PersonSearchInput
-              label="Respondent"
-              selectedId={formRespondentId}
-              selectedName={formRespondentName}
-              onSelect={(r) => { setFormRespondentId(r.id); setFormRespondentName(residentDisplayName(r)); }}
-              onClear={() => { setFormRespondentId(null); setFormRespondentName(''); }}
+            <MultiPersonSearchInput
+              label="Respondents"
+              selected={formRespondents}
+              onAdd={(r) => setFormRespondents(prev => prev.some(p => p.id === r.id) ? prev : [...prev, { id: r.id, name: residentDisplayName(r) }])}
+              onRemove={(id) => setFormRespondents(prev => prev.filter(p => p.id !== id))}
             />
 
             <div className="space-y-2">
@@ -1010,11 +1175,22 @@ export default function CasesPage() {
                     {/* Complainant */}
                     <div className="flex-1 min-w-0">
                       <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Complainant</p>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-start gap-2">
                         <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
                           <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                         </div>
-                        <p className="font-medium text-sm truncate">{detailCase.complainant_name || 'Not specified'}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {detailParties.filter(p => p.role === 'complainant').length > 0 ? (
+                            detailParties.filter(p => p.role === 'complainant').map(p => (
+                              <button key={p.id} type="button" onClick={() => openResidentDetail(p.resident_id)}
+                                className="rounded-full border bg-background px-2 py-0.5 text-sm font-medium hover:bg-accent transition-colors">
+                                {p.name}
+                              </button>
+                            ))
+                          ) : (
+                            <p className="font-medium text-sm pt-1">{complainantsOf(detailCase) || 'Not specified'}</p>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -1027,11 +1203,22 @@ export default function CasesPage() {
                     {/* Respondent */}
                     <div className="flex-1 min-w-0">
                       <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Respondent</p>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-start gap-2">
                         <div className="h-8 w-8 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center shrink-0">
                           <User className="h-4 w-4 text-red-600 dark:text-red-400" />
                         </div>
-                        <p className="font-medium text-sm truncate">{detailCase.respondent_name || 'Not specified'}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {detailParties.filter(p => p.role === 'respondent').length > 0 ? (
+                            detailParties.filter(p => p.role === 'respondent').map(p => (
+                              <button key={p.id} type="button" onClick={() => openResidentDetail(p.resident_id)}
+                                className="rounded-full border bg-background px-2 py-0.5 text-sm font-medium hover:bg-accent transition-colors">
+                                {p.name}
+                              </button>
+                            ))
+                          ) : (
+                            <p className="font-medium text-sm pt-1">{respondentsOf(detailCase) || 'Not specified'}</p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1063,6 +1250,10 @@ export default function CasesPage() {
                     <FileText className="mr-2 h-3.5 w-3.5" />
                     Complaint Narrative
                   </Button>
+                  <Button variant="outline" size="sm" onClick={openCustomDoc}>
+                    <FilePlus2 className="mr-2 h-3.5 w-3.5" />
+                    Custom Document
+                  </Button>
                   {(detailCase.status === 'pending' || detailCase.status === 'ongoing') && (
                     <>
                       <Button variant="outline" size="sm" onClick={() => {
@@ -1078,6 +1269,34 @@ export default function CasesPage() {
                     </>
                   )}
                 </div>
+
+                {/* ─── Saved Documents ─────────────────────────────────────── */}
+                {caseDocs.length > 0 && (
+                  <div>
+                    <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Saved Documents ({caseDocs.length})</h3>
+                    <div className="space-y-1 max-h-36 overflow-y-auto">
+                      {caseDocs.map((d) => (
+                        <div key={d.id} className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => { setPreviewedDocId(d.id); setCaseDocTitle(d.title || 'Case Document'); setCaseDocHtml(d.content_html); }}
+                            className="flex flex-1 items-center justify-between gap-2 rounded-md border px-3 py-1.5 text-left text-xs hover:bg-accent transition-colors"
+                          >
+                            <span className="truncate font-medium">{d.title || 'Case Document'}</span>
+                            <span className="shrink-0 text-muted-foreground">{formatDate(d.generated_at)}</span>
+                          </button>
+                          <Button
+                            variant="ghost" size="icon" className="h-7 w-7 shrink-0"
+                            title="Edit in page editor"
+                            onClick={() => { setDetailOpen(false); router.push(`/documents/editor?reportId=${d.id}`); }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* ─── Summons Timeline ────────────────────────────────────── */}
                 <div className="pt-1">
@@ -1291,13 +1510,15 @@ export default function CasesPage() {
             <DialogTitle>{caseDocTitle}</DialogTitle>
             <DialogDescription>Preview the case document. You can print it or save as PDF.</DialogDescription>
           </DialogHeader>
-          <div className="bg-neutral-100 dark:bg-neutral-900 p-6 rounded-md overflow-auto max-h-[60vh]">
-            <div className="mx-auto bg-white text-black border border-neutral-300 shadow-sm" style={{ width: '794px', minHeight: '1123px', padding: '96px 72px', fontFamily: "'Times New Roman', Times, serif", fontSize: '12pt', lineHeight: 1.6 }}>
-              {caseDocHtml && <div dangerouslySetInnerHTML={{ __html: caseDocHtml }} />}
-            </div>
+          <div className="bg-neutral-200 dark:bg-neutral-900 p-6 rounded-md overflow-auto max-h-[60vh]">
+            {caseDocHtml && <PaperPreview html={caseDocHtml} />}
           </div>
           <DialogFooter className="flex gap-2 sm:gap-2">
             <Button variant="outline" onClick={() => setCaseDocHtml(null)}>Close</Button>
+            <Button variant="outline" onClick={handleEditCaseDoc}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit in Page Editor
+            </Button>
             <Button variant="outline" onClick={handlePrintCaseDoc} disabled={docPrinting}>
               <Printer className="mr-2 h-4 w-4" />
               {docPrinting ? 'Printing...' : 'Print'}
@@ -1325,8 +1546,8 @@ export default function CasesPage() {
             <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground space-y-1">
               <p className="font-medium text-foreground text-sm">Auto-filled from records</p>
               <p>Case No: <span className="font-medium text-foreground">{detailCase?.case_number}</span></p>
-              <p>Complainant: <span className="font-medium text-foreground">{detailCase?.complainant_name || '—'}</span></p>
-              <p>Respondent: <span className="font-medium text-foreground">{detailCase?.respondent_name || '—'}</span></p>
+              <p>Complainants: <span className="font-medium text-foreground">{detailCase ? complainantsOf(detailCase) || '—' : '—'}</span></p>
+              <p>Respondents: <span className="font-medium text-foreground">{detailCase ? respondentsOf(detailCase) || '—' : '—'}</span></p>
               <p>Barangay header &amp; official in charge will be pulled from settings automatically.</p>
             </div>
 
@@ -1394,6 +1615,44 @@ export default function CasesPage() {
             >
               {narrativeGenerating ? 'Generating...' : 'Preview Document'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ResidentDetailDialog residentId={residentDetailId} open={residentDetailOpen} onOpenChange={setResidentDetailOpen} />
+
+      {/* ─── Custom Document Picker ─────────────────────────────────────── */}
+      <Dialog open={customDocOpen} onOpenChange={setCustomDocOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Custom Document — Case {detailCase?.case_number}</DialogTitle>
+            <DialogDescription>
+              Start from a template (case details are filled in automatically) or from a blank page,
+              then edit it freely before printing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5 max-h-[50vh] overflow-y-auto">
+            <button
+              type="button"
+              className="w-full rounded-md border border-dashed px-3 py-2.5 text-left text-sm font-medium hover:bg-accent transition-colors"
+              onClick={() => detailCase && router.push(`/documents/editor?caseId=${detailCase.id}`)}
+            >
+              Blank document
+              <span className="block text-xs font-normal text-muted-foreground">Letterhead + case info scaffold, write the rest yourself</span>
+            </button>
+            {docTemplates.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className="w-full rounded-md border px-3 py-2.5 text-left text-sm hover:bg-accent transition-colors"
+                onClick={() => detailCase && router.push(`/documents/editor?caseId=${detailCase.id}&templateId=${t.id}`)}
+              >
+                {t.name}
+              </button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCustomDocOpen(false)}>Cancel</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

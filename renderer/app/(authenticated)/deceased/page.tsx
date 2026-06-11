@@ -8,6 +8,7 @@ const CASE_TEMPLATE_KEYWORDS = ['summon', 'sumbong', 'pagtawag', 'minutas', 'com
 
 export default function DeceasedPage() {
   const config: CategoryConfig = useMemo(() => ({
+    pageKey: 'deceased',
     title: 'Deceased Records',
     description: 'Archive of deceased residents — not counted in demographics',
     searchPlaceholder: 'Search deceased records...',

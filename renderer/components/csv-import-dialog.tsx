@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Checkbox } from '@/components/ui/checkbox';
+import { ToggleChip } from '@/components/ui/toggle-chip';
 import { getAPI } from '@/lib/ipc';
 import { toast } from 'sonner';
 
@@ -418,10 +418,9 @@ export function CSVImportDialog({ open, onClose, onImportComplete }: CSVImportDi
       )}
 
       {/* Skip duplicates checkbox */}
-      <label className="flex items-center gap-2 cursor-pointer">
-        <Checkbox checked={skipDuplicates} onCheckedChange={(checked) => setSkipDuplicates(checked === true)} />
-        <span className="text-sm">{t('import.skipDuplicates', 'Skip duplicate records')}</span>
-      </label>
+      <ToggleChip checked={skipDuplicates} onCheckedChange={setSkipDuplicates}>
+        {t('import.skipDuplicates', 'Skip duplicate records')}
+      </ToggleChip>
 
       {/* Mapping summary */}
       <div className="flex items-center gap-2 text-xs text-muted-foreground">

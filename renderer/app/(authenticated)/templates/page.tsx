@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { TemplateEditor } from '@/components/template-editor';
 import { getAPI, type ReportTemplate } from '@/lib/ipc';
+import { parsePaperJson } from '@/lib/paper';
+import { PaperPreview } from '@/components/paper-preview';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/empty-state';
 import { useTranslation } from 'react-i18next';
@@ -42,13 +44,8 @@ export default function TemplatesPage() {
 
   // ─── Report Templates ───
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
-  const [editOpen, setEditOpen] = useState(false);
-  const [editTemplate, setEditTemplate] = useState<ReportTemplate | null>(null);
   const [previewTemplate, setPreviewTemplate] = useState<ReportTemplate | null>(null);
-  const [name, setName] = useState('');
-  const [contentHtml, setContentHtml] = useState('');
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [saving, setSaving] = useState(false);
 
   // ─── List Header Templates ───
   const [listHeaders, setListHeaders] = useState<ListHeader[]>([]);
@@ -85,42 +82,17 @@ export default function TemplatesPage() {
 
   useEffect(() => { fetchTemplates(); fetchListHeaders(); }, []);
 
-  // Handle ?edit=<id> from generator page
+  // Handle ?edit=<id> from generator page — opens the full document editor
   useEffect(() => {
     const editId = searchParams.get('edit');
-    if (editId && templates.length > 0) {
-      const tpl = templates.find(t => t.id === Number(editId));
-      if (tpl) {
-        openEdit(tpl);
-        // Clear the query param so it doesn't re-trigger
-        router.replace('/templates', { scroll: false });
-      }
+    if (editId) {
+      router.replace(`/templates/editor?id=${editId}`, { scroll: false });
     }
-  }, [searchParams, templates]);
+  }, [searchParams, router]);
 
   // ─── Report Template handlers ───
-  const openNew = () => { setEditTemplate(null); setName(''); setContentHtml(''); setEditOpen(true); };
-  const openEdit = (t: ReportTemplate) => { setEditTemplate(t); setName(t.name); setContentHtml(t.content_html); setEditOpen(true); };
-
-  const handleSave = async () => {
-    if (!name.trim()) { toast.error('Template name is required'); return; }
-    const api = getAPI();
-    if (!api) return;
-    setSaving(true);
-    try {
-      const variableRegex = /\{\{(\w+)\}\}/g;
-      const usedVars: string[] = [];
-      let match;
-      while ((match = variableRegex.exec(contentHtml)) !== null) {
-        if (!usedVars.includes(match[1])) usedVars.push(match[1]);
-      }
-      const data = { name: name.trim(), content_html: contentHtml, variables_json: JSON.stringify(usedVars) };
-      if (editTemplate) { await api.updateTemplate(editTemplate.id, data); toast.success('Template updated'); }
-      else { await api.createTemplate(data); toast.success('Template created'); }
-      setEditOpen(false);
-      fetchTemplates();
-    } finally { setSaving(false); }
-  };
+  const openNew = () => router.push('/templates/editor');
+  const openEdit = (t: ReportTemplate) => router.push(`/templates/editor?id=${t.id}`);
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -201,7 +173,10 @@ export default function TemplatesPage() {
                     <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
                       <div className="flex-1 min-w-0">
                         <CardTitle className="text-base truncate">{t.name}</CardTitle>
-                        <p className="text-xs text-muted-foreground mt-1">Created: {new Date(t.created_at).toLocaleDateString()}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {parsePaperJson(t.paper_json).size === 'Long' ? 'Long 8.5×13' : parsePaperJson(t.paper_json).size}
+                          {' · '}Created: {new Date(t.created_at).toLocaleDateString()}
+                        </p>
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <Button variant="ghost" size="icon" onClick={() => setPreviewTemplate(t)} title="Preview"><Eye className="h-4 w-4" /></Button>
@@ -278,33 +253,12 @@ export default function TemplatesPage() {
             <DialogTitle>Preview: {previewTemplate?.name}</DialogTitle>
             <DialogDescription>Variables will be replaced with resident data when generating.</DialogDescription>
           </DialogHeader>
-          <div className="bg-neutral-100 dark:bg-neutral-900 p-6 rounded-md overflow-auto max-h-[70vh]">
-            <div className="mx-auto bg-white text-black border border-neutral-300 shadow-sm" style={{ width: '794px', minHeight: '1123px', padding: '96px 72px', fontFamily: "'Times New Roman', Times, serif", fontSize: '12pt', lineHeight: 1.6 }}>
-              {previewTemplate && <div dangerouslySetInnerHTML={{ __html: previewTemplate.content_html }} />}
-            </div>
+          <div className="bg-neutral-200 dark:bg-neutral-900 p-6 rounded-md overflow-auto max-h-[70vh]">
+            {previewTemplate && (
+              <PaperPreview html={previewTemplate.content_html} paper={parsePaperJson(previewTemplate.paper_json)} />
+            )}
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setPreviewTemplate(null)}>Close</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ═══ Report Template Edit ═══ */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-h-[90vh] max-w-[1050px] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editTemplate ? 'Edit Template' : 'New Template'}</DialogTitle>
-            <DialogDescription>Use the editor to create your template. Insert variables to auto-fill resident data.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="template-name">Template Name</Label>
-              <Input id="template-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Barangay Clearance" />
-            </div>
-            <TemplateEditor key={editTemplate?.id || 'new'} content={contentHtml} onChange={setContentHtml} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save Template'}</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 

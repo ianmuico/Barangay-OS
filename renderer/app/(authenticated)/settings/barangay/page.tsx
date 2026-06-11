@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Upload, X, ImageIcon, FileText } from 'lucide-react';
+import { Upload, X, ImageIcon, FileText, Droplets } from 'lucide-react';
 import { TemplateEditor } from '@/components/template-editor';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
 import { getAPI } from '@/lib/ipc';
 import { toast } from 'sonner';
 
@@ -141,6 +143,111 @@ export default function BarangaySettingsPage() {
           </CardContent>
         </Card>
       </div>
+      {/* Watermark */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Droplets className="h-4 w-4" />
+            Report Watermark
+          </CardTitle>
+          <CardDescription>
+            Your barangay logo appears faintly in the center of every generated certificate, report and printed list.
+            Adjust how big and how visible it is — or turn it off entirely.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {(() => {
+            const wmEnabled = settings.watermark_enabled !== '0';
+            const wmSize = Math.min(800, Math.max(100, parseInt(settings.watermark_size || '420', 10) || 420));
+            const wmOpacity = Math.min(0.5, Math.max(0.01, parseFloat(settings.watermark_opacity || '0.06') || 0.06));
+            // Preview sheet is 280px wide vs a real 794px A4 page
+            const previewScale = 280 / 794;
+            return (
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between rounded-lg border p-3">
+                    <div>
+                      <p className="text-sm font-medium">Show watermark</p>
+                      <p className="text-xs text-muted-foreground">Applies to all certificates, reports and printed lists</p>
+                    </div>
+                    <Switch
+                      checked={wmEnabled}
+                      onCheckedChange={(checked) => update('watermark_enabled', checked ? '1' : '0')}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Size</Label>
+                      <span className="text-xs text-muted-foreground">{wmSize}px</span>
+                    </div>
+                    <Slider
+                      min={100} max={800} step={20}
+                      value={[wmSize]}
+                      disabled={!wmEnabled}
+                      onValueChange={([v]) => update('watermark_size', String(v))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Visibility</Label>
+                      <span className="text-xs text-muted-foreground">{Math.round(wmOpacity * 100)}%</span>
+                    </div>
+                    <Slider
+                      min={2} max={30} step={1}
+                      value={[Math.round(wmOpacity * 100)]}
+                      disabled={!wmEnabled}
+                      onValueChange={([v]) => update('watermark_opacity', String(v / 100))}
+                    />
+                    <p className="text-xs text-muted-foreground">Keep it low (5–10%) so the document stays readable.</p>
+                  </div>
+
+                  <Button onClick={handleSave} disabled={saving}>
+                    {saving ? 'Saving...' : 'Save Watermark'}
+                  </Button>
+                </div>
+
+                {/* Live preview */}
+                <div className="flex flex-col items-center gap-2">
+                  <div className="relative w-[280px] overflow-hidden rounded border bg-white shadow-sm" style={{ aspectRatio: '210 / 297' }}>
+                    {wmEnabled && logoPreview ? (
+                      <img
+                        src={logoPreview}
+                        alt="Watermark preview"
+                        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 object-contain"
+                        style={{
+                          width: `${Math.round(wmSize * previewScale)}px`,
+                          height: `${Math.round(wmSize * previewScale)}px`,
+                          opacity: wmOpacity,
+                        }}
+                      />
+                    ) : null}
+                    {/* Fake document lines so the preview reads as a page */}
+                    <div className="absolute inset-x-8 top-8 space-y-2.5">
+                      <div className="mx-auto h-2 w-32 rounded bg-neutral-200" />
+                      <div className="mx-auto h-1.5 w-24 rounded bg-neutral-100" />
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <div key={i} className="h-1.5 rounded bg-neutral-100" style={{ width: `${85 - (i % 4) * 8}%` }} />
+                      ))}
+                    </div>
+                    {!logoPreview && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <p className="px-6 text-center text-xs text-muted-foreground">Upload a barangay logo above to enable the watermark</p>
+                      </div>
+                    )}
+                    {logoPreview && !wmEnabled && (
+                      <div className="absolute inset-x-0 bottom-2 text-center text-[10px] text-muted-foreground">Watermark off</div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Preview (A4 page)</p>
+                </div>
+              </div>
+            );
+          })()}
+        </CardContent>
+      </Card>
+
       {/* Report Header Template */}
       <Card>
         <CardHeader>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Plus, Pencil, Trash2, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Camera } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,16 +50,43 @@ export default function OfficialsPage() {
   const [residentResults, setResidentResults] = useState<Resident[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [photos, setPhotos] = useState<Record<number, string>>({});
+
   const fetchOfficials = async () => {
     const api = getAPI();
     if (!api) return;
     const data = await api.getOfficials();
     setOfficials(data);
+    // Load photos from the linked residents
+    const entries = await Promise.all(
+      data.filter(o => o.photo_path).map(async (o) => {
+        const dataUrl = await api.getImageBase64(o.photo_path!);
+        return [o.id, dataUrl] as const;
+      })
+    );
+    setPhotos(Object.fromEntries(entries.filter(([, v]) => v) as [number, string][]));
   };
 
   useEffect(() => {
     fetchOfficials();
   }, []);
+
+  const handleUploadPhoto = async (o: Official) => {
+    const api = getAPI();
+    if (!api) return;
+    if (!o.resident_id) {
+      toast.error('Link this official to a resident first — the photo is stored on the resident record.');
+      return;
+    }
+    const result = await api.selectFile({
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    });
+    if (result.canceled || !result.filePaths?.length) return;
+    await api.saveResidentPhoto(o.resident_id, result.filePaths[0]);
+    toast.success('Photo updated');
+    fetchOfficials();
+  };
 
   const handleResidentSearch = useCallback((value: string) => {
     setResidentQuery(value);
@@ -199,7 +226,17 @@ export default function OfficialsPage() {
               <Card key={o.id}>
                 <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
                   <div className="flex items-center gap-3">
-                    <SquircleAvatar name={name} id={o.id} size="lg" />
+                    <div className="group relative">
+                      <SquircleAvatar name={name} id={o.id} size="lg" src={photos[o.id]} />
+                      <button
+                        type="button"
+                        onClick={() => handleUploadPhoto(o)}
+                        title={o.resident_id ? 'Upload photo' : 'Link a resident first to add a photo'}
+                        className="absolute inset-0 flex items-center justify-center rounded-[22%] bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      >
+                        <Camera className="h-4 w-4" />
+                      </button>
+                    </div>
                     <div className="min-w-0">
                       <CardTitle className="text-base truncate">{o.position}</CardTitle>
                       <p className="text-sm text-muted-foreground truncate">{name}</p>

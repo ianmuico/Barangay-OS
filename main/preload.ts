@@ -54,6 +54,8 @@ interface TemplateData {
   name: string;
   content_html: string;
   variables_json?: string;
+  paper_json?: string | null;
+  pages_json?: string | null;
   watermark_path?: string | null;
 }
 
@@ -158,20 +160,56 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('reports:getInputFields', templateId),
   generateReport: (templateId: number, residentId: number, inputValues?: Record<string, string>) =>
     ipcRenderer.invoke('reports:generate', templateId, residentId, inputValues),
-  exportPDF: (html: string, filename: string) =>
-    ipcRenderer.invoke('reports:exportPDF', html, filename),
-  printReport: (html: string) =>
-    ipcRenderer.invoke('reports:print', html),
+  exportPDF: (html: string, filename: string, paper?: unknown) =>
+    ipcRenderer.invoke('reports:exportPDF', html, filename, paper),
+  printReport: (html: string, paper?: unknown) =>
+    ipcRenderer.invoke('reports:print', html, paper),
   generateMultiReport: (templateIds: number[], residentId: number) =>
     ipcRenderer.invoke('reports:generateMulti', templateIds, residentId),
-  exportMultiPDF: (htmlPages: string[], filename: string) =>
-    ipcRenderer.invoke('reports:exportMultiPDF', htmlPages, filename),
+  exportMultiPDF: (htmlPages: string[], filename: string, paper?: unknown) =>
+    ipcRenderer.invoke('reports:exportMultiPDF', htmlPages, filename, paper),
   printList: (options: PrintListOptions) =>
     ipcRenderer.invoke('reports:printList', options),
   printGroupedList: (options: PrintGroupedListOptions) =>
     ipcRenderer.invoke('reports:printGroupedList', options),
   getGeneratedReports: (residentId?: number) =>
     ipcRenderer.invoke('db:reports:list', residentId),
+  saveCaseDocument: (data: { case_id: number; title: string; content_html: string }) =>
+    ipcRenderer.invoke('db:reports:saveCaseDoc', data),
+  saveDocument: (data: { id?: number; case_id?: number | null; resident_id?: number | null; business_id?: number | null; title: string; content_html: string }) =>
+    ipcRenderer.invoke('db:reports:saveDoc', data),
+  getDocument: (id: number) =>
+    ipcRenderer.invoke('db:reports:get', id),
+  deleteDocument: (id: number) =>
+    ipcRenderer.invoke('db:reports:delete', id),
+  listDocuments: (params?: { search?: string; type?: 'all' | 'resident' | 'case' | 'business'; page?: number; limit?: number }) =>
+    ipcRenderer.invoke('db:reports:listDocs', params),
+  getCaseDocuments: (caseId: number) =>
+    ipcRenderer.invoke('db:reports:listByCase', caseId),
+  getReportStorageStats: () =>
+    ipcRenderer.invoke('db:reports:storageStats'),
+  cleanupGeneratedReports: (olderThanDays: number) =>
+    ipcRenderer.invoke('db:reports:cleanup', olderThanDays),
+  getUpcomingSummons: (limit?: number) =>
+    ipcRenderer.invoke('db:summons:upcoming', limit),
+
+  // Resident issues
+  getResidentIssues: (residentId: number) => ipcRenderer.invoke('db:issues:list', residentId),
+  createResidentIssue: (data: { resident_id: number; title: string; details?: string | null }) => ipcRenderer.invoke('db:issues:create', data),
+  updateResidentIssue: (id: number, data: Record<string, unknown>) => ipcRenderer.invoke('db:issues:update', id, data),
+  deleteResidentIssue: (id: number) => ipcRenderer.invoke('db:issues:delete', id),
+  getFlaggedResidents: (search?: string) => ipcRenderer.invoke('db:issues:flagged', search),
+
+  // Businesses
+  getBusinesses: (params?: { search?: string; status?: string }) => ipcRenderer.invoke('db:businesses:list', params),
+  getBusinessOwners: (businessId: number) => ipcRenderer.invoke('db:businesses:owners', businessId),
+  createBusiness: (data: Record<string, unknown>, owners: { resident_id?: number | null; outside_owner_id?: number | null }[]) => ipcRenderer.invoke('db:businesses:create', data, owners),
+  updateBusiness: (id: number, data: Record<string, unknown>, owners?: { resident_id?: number | null; outside_owner_id?: number | null }[]) => ipcRenderer.invoke('db:businesses:update', id, data, owners),
+  deleteBusiness: (id: number) => ipcRenderer.invoke('db:businesses:delete', id),
+  getOutsideOwners: (search?: string) => ipcRenderer.invoke('db:outsiders:list', search),
+  createOutsideOwner: (data: Record<string, unknown>) => ipcRenderer.invoke('db:outsiders:create', data),
+  updateOutsideOwner: (id: number, data: Record<string, unknown>) => ipcRenderer.invoke('db:outsiders:update', id, data),
+  deleteOutsideOwner: (id: number) => ipcRenderer.invoke('db:outsiders:delete', id),
 
   // Officials
   getOfficials: () => ipcRenderer.invoke('db:officials:list'),
@@ -209,12 +247,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startServer: (port: number) => ipcRenderer.invoke('server:start', port),
   stopServer: () => ipcRenderer.invoke('server:stop'),
   getServerStatus: () => ipcRenderer.invoke('server:status'),
+  testServer: () => ipcRenderer.invoke('server:test'),
 
   // Cases & Summons
   getCases: (params?: { search?: string; status?: string }) => ipcRenderer.invoke('db:cases:list', params),
   getCase: (id: number) => ipcRenderer.invoke('db:cases:get', id),
-  createCase: (data: { case_type: string; complainant_id?: number | null; respondent_id?: number | null; description?: string; filed_date?: string }) => ipcRenderer.invoke('db:cases:create', data),
+  createCase: (data: { case_type: string; complainant_id?: number | null; respondent_id?: number | null; description?: string; filed_date?: string; parties?: { resident_id: number; role: string }[] }) => ipcRenderer.invoke('db:cases:create', data),
   updateCase: (id: number, data: Record<string, unknown>) => ipcRenderer.invoke('db:cases:update', id, data),
+  getCaseParties: (caseId: number) => ipcRenderer.invoke('db:cases:parties', caseId),
   deleteCase: (id: number) => ipcRenderer.invoke('db:cases:delete', id),
   getSummons: (caseId: number) => ipcRenderer.invoke('db:summons:list', caseId),
   createSummon: (data: { case_id: number; summoned_resident_id?: number | null; summon_date: string; summon_time?: string; notes?: string }) => ipcRenderer.invoke('db:summons:create', data),
@@ -251,7 +291,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Danger Zone
   wipeDatabase: (pin: string) => ipcRenderer.invoke('db:dangerzone:wipe', pin),
-  fillTestData: (pin: string) => ipcRenderer.invoke('db:dangerzone:fillTestData', pin),
+  fillTestData: (pin: string, count?: number) => ipcRenderer.invoke('db:dangerzone:fillTestData', pin, count),
   reseedTemplates: (pin: string) => ipcRenderer.invoke('db:dangerzone:reseedTemplates', pin),
   setDangerZonePin: (currentPin: string, newPin: string) => ipcRenderer.invoke('db:dangerzone:setPin', currentPin, newPin),
 
@@ -268,4 +308,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('file:removeLogo'),
   getLogoBase64: () =>
     ipcRenderer.invoke('file:getLogoBase64'),
+  getImageBase64: (imagePath: string) =>
+    ipcRenderer.invoke('file:getImageBase64', imagePath),
 });

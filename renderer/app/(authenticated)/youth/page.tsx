@@ -6,6 +6,7 @@ import { YOUTH_GROUP_OPTIONS } from '@/components/category-print-dialog';
 
 export default function YouthPage() {
   const config: CategoryConfig = useMemo(() => ({
+    pageKey: 'youth',
     title: 'Youth Residents',
     description: 'Ages 15-30, unmarried residents eligible for youth programs',
     searchPlaceholder: 'Search youth residents...',

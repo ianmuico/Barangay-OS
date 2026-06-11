@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Download, Upload, Trash2, FlaskConical, ShieldAlert, Loader2, ChevronDown, FileText } from 'lucide-react';
+import { Download, Upload, Trash2, FlaskConical, ShieldAlert, Loader2, ChevronDown, FileText, HardDrive } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Slider } from '@/components/ui/slider';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
@@ -120,7 +122,7 @@ const ACTION_CONFIG = {
   },
   fill: {
     dialogTitle: 'Confirm Test Data Generation',
-    dialogDesc: 'This will generate ~800 test residents with Filipino names, family trees (grandparents, parents, children), partner links, varied demographics, and purok assignments.',
+    dialogDesc: 'This will generate test residents with Filipino names, multi-generation family trees (great-grandparents down to grandchildren), partner links, varied demographics, and purok assignments.',
     buttonLabel: 'Generate Test Data',
     successMsg: 'Test data generated! Reloading...',
     icon: FlaskConical,
@@ -144,6 +146,10 @@ export default function BackupRestorePage() {
   const [dangerExpanded, setDangerExpanded] = useState(false);
   const [dialogAction, setDialogAction] = useState<DangerAction | null>(null);
   const [pin, setPin] = useState('');
+  const [testCount, setTestCount] = useState(1000);
+  const [storage, setStorage] = useState<{ count: number; totalBytes: number; oldest: string | null } | null>(null);
+  const [cleanupAge, setCleanupAge] = useState('365');
+  const [cleaning, setCleaning] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pinError, setPinError] = useState(false);
 
@@ -169,6 +175,31 @@ export default function BackupRestorePage() {
         setTimeout(() => window.location.reload(), 1500);
       } else toast.error(result.error || 'Restore failed');
     } finally { setRestoring(false); }
+  };
+
+  const fetchStorage = async () => {
+    const api = getAPI();
+    if (!api) return;
+    try { setStorage(await api.getReportStorageStats()); } catch { /* ignore */ }
+  };
+
+  useEffect(() => { fetchStorage(); }, []);
+
+  const handleCleanup = async () => {
+    const api = getAPI();
+    if (!api) return;
+    setCleaning(true);
+    try {
+      const result = await api.cleanupGeneratedReports(parseInt(cleanupAge, 10));
+      if (result.success) {
+        toast.success(`Deleted ${result.deleted} old generated document${result.deleted === 1 ? '' : 's'}`);
+        fetchStorage();
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Cleanup failed');
+    } finally {
+      setCleaning(false);
+    }
   };
 
   const openDangerDialog = (action: DangerAction) => {
@@ -197,7 +228,7 @@ export default function BackupRestorePage() {
         ? await api.wipeDatabase(pin)
         : dialogAction === 'reseed'
         ? await api.reseedTemplates(pin)
-        : await api.fillTestData(pin);
+        : await api.fillTestData(pin, testCount);
 
       if (result.success) {
         toast.success(ACTION_CONFIG[dialogAction].successMsg);
@@ -240,6 +271,60 @@ export default function BackupRestorePage() {
         </CardHeader>
         <CardContent>
           <Button variant="outline" onClick={handleRestore} disabled={restoring}>{restoring ? 'Restoring...' : 'Restore from Backup'}</Button>
+        </CardContent>
+      </Card>
+
+      {/* ─── Generated Document Storage ──────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><HardDrive className="h-4 w-4" />Document Storage</CardTitle>
+          <CardDescription>
+            Every generated certificate and case document (including custom documents) is saved for record-keeping.
+            If storage grows large, you can delete old generated documents — resident and case information is never touched, only the stored document copies.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {storage && (
+            <div className="flex flex-wrap gap-6 text-sm">
+              <div>
+                <p className="text-2xl font-bold">{storage.count.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">saved documents</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{storage.totalBytes >= 1048576 ? `${(storage.totalBytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(storage.totalBytes / 1024))} KB`}</p>
+                <p className="text-xs text-muted-foreground">storage used</p>
+              </div>
+              {storage.oldest && (
+                <div>
+                  <p className="text-2xl font-bold">{new Date(storage.oldest).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}</p>
+                  <p className="text-xs text-muted-foreground">oldest document</p>
+                </div>
+              )}
+            </div>
+          )}
+          {storage && storage.totalBytes > 100 * 1048576 && (
+            <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400">
+              Document storage is over 100 MB — consider cleaning up old documents below.
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm">Delete generated documents older than</span>
+            <Select value={cleanupAge} onValueChange={setCleanupAge}>
+              <SelectTrigger className="h-8 w-[130px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="180">6 months</SelectItem>
+                <SelectItem value="365">1 year</SelectItem>
+                <SelectItem value="730">2 years</SelectItem>
+                <SelectItem value="1095">3 years</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={handleCleanup} disabled={cleaning || !storage?.count}>
+              {cleaning ? 'Cleaning...' : 'Clean Up'}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Tip: create a backup first — backups include all saved documents, so nothing is lost permanently.
+          </p>
         </CardContent>
       </Card>
 
@@ -311,8 +396,12 @@ export default function BackupRestorePage() {
                   Fill Test Data
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Generate ~800 test residents with families and demographics.
+                  Generate test residents with multi-generation families and demographics.
                 </p>
+                <div className="mt-2 flex items-center gap-3 max-w-xs">
+                  <Slider min={500} max={8000} step={500} value={[testCount]} onValueChange={([v]) => setTestCount(v)} className="w-40" />
+                  <span className="text-xs font-medium tabular-nums text-amber-600 dark:text-amber-400">{testCount.toLocaleString()} residents</span>
+                </div>
               </div>
               <Button
                 variant="outline"

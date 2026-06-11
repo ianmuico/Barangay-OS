@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { ScrollHeaderProvider } from '@/lib/scroll-header-context';
 import { Sidebar } from '@/components/sidebar';
 import { Topbar } from '@/components/topbar';
+import { SummonReminders } from '@/components/summon-reminders';
 import { SetupWizard } from '@/components/setup-wizard';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { getAPI } from '@/lib/ipc';
@@ -86,6 +87,7 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
           <Topbar />
+          <SummonReminders />
           <main id="main-content" className="flex-1 overflow-auto p-6" tabIndex={-1}>
             <ErrorBoundary>
               {children}

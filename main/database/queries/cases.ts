@@ -16,6 +16,17 @@ export interface Case {
   // Joined fields
   complainant_name?: string;
   respondent_name?: string;
+  // Aggregated from case_parties ("Juan Cruz, Maria Santos")
+  complainant_names?: string;
+  respondent_names?: string;
+}
+
+export interface CaseParty {
+  id: number;
+  case_id: number;
+  resident_id: number | null;
+  role: 'complainant' | 'respondent';
+  name?: string;
 }
 
 export interface Summon {
@@ -83,9 +94,10 @@ export function listCases(params?: { search?: string; status?: string }): Case[]
   const values: (string | number)[] = [];
 
   if (params?.search) {
-    conditions.push(`(c.case_number LIKE ? OR c.description LIKE ? OR comp.first_name || ' ' || comp.last_name LIKE ? OR resp.first_name || ' ' || resp.last_name LIKE ?)`);
+    conditions.push(`(c.case_number LIKE ? OR c.description LIKE ? OR comp.first_name || ' ' || comp.last_name LIKE ? OR resp.first_name || ' ' || resp.last_name LIKE ?
+      OR EXISTS (SELECT 1 FROM case_parties p JOIN residents pr ON p.resident_id = pr.id WHERE p.case_id = c.id AND pr.first_name || ' ' || pr.last_name LIKE ?))`);
     const q = `%${params.search}%`;
-    values.push(q, q, q, q);
+    values.push(q, q, q, q, q);
   }
 
   if (params?.status) {
@@ -99,7 +111,13 @@ export function listCases(params?: { search?: string; status?: string }): Case[]
     SELECT
       c.*,
       COALESCE(comp.first_name || ' ' || comp.last_name || COALESCE(' ' || comp.suffix, ''), '') AS complainant_name,
-      COALESCE(resp.first_name || ' ' || resp.last_name || COALESCE(' ' || resp.suffix, ''), '') AS respondent_name
+      COALESCE(resp.first_name || ' ' || resp.last_name || COALESCE(' ' || resp.suffix, ''), '') AS respondent_name,
+      COALESCE((SELECT GROUP_CONCAT(pr.first_name || ' ' || pr.last_name || COALESCE(' ' || pr.suffix, ''), ', ')
+        FROM case_parties p JOIN residents pr ON p.resident_id = pr.id
+        WHERE p.case_id = c.id AND p.role = 'complainant'), '') AS complainant_names,
+      COALESCE((SELECT GROUP_CONCAT(pr.first_name || ' ' || pr.last_name || COALESCE(' ' || pr.suffix, ''), ', ')
+        FROM case_parties p JOIN residents pr ON p.resident_id = pr.id
+        WHERE p.case_id = c.id AND p.role = 'respondent'), '') AS respondent_names
     FROM cases c
     LEFT JOIN residents comp ON c.complainant_id = comp.id
     LEFT JOIN residents resp ON c.respondent_id = resp.id
@@ -116,7 +134,13 @@ export function getCaseById(id: number): Case | undefined {
     SELECT
       c.*,
       COALESCE(comp.first_name || ' ' || comp.last_name || COALESCE(' ' || comp.suffix, ''), '') AS complainant_name,
-      COALESCE(resp.first_name || ' ' || resp.last_name || COALESCE(' ' || resp.suffix, ''), '') AS respondent_name
+      COALESCE(resp.first_name || ' ' || resp.last_name || COALESCE(' ' || resp.suffix, ''), '') AS respondent_name,
+      COALESCE((SELECT GROUP_CONCAT(pr.first_name || ' ' || pr.last_name || COALESCE(' ' || pr.suffix, ''), ', ')
+        FROM case_parties p JOIN residents pr ON p.resident_id = pr.id
+        WHERE p.case_id = c.id AND p.role = 'complainant'), '') AS complainant_names,
+      COALESCE((SELECT GROUP_CONCAT(pr.first_name || ' ' || pr.last_name || COALESCE(' ' || pr.suffix, ''), ', ')
+        FROM case_parties p JOIN residents pr ON p.resident_id = pr.id
+        WHERE p.case_id = c.id AND p.role = 'respondent'), '') AS respondent_names
     FROM cases c
     LEFT JOIN residents comp ON c.complainant_id = comp.id
     LEFT JOIN residents resp ON c.respondent_id = resp.id
@@ -185,6 +209,38 @@ export function getCaseCount(): number {
   const db = getDb();
   const result = db.prepare("SELECT COUNT(*) as count FROM cases WHERE status IN ('pending', 'ongoing')").get() as { count: number };
   return result.count;
+}
+
+// ─── Case parties (multiple complainants/respondents) ───────────────────────
+
+export function listCaseParties(caseId: number): CaseParty[] {
+  const db = getDb();
+  return db.prepare(`
+    SELECT p.*, COALESCE(r.first_name || ' ' || r.last_name || COALESCE(' ' || r.suffix, ''), '') AS name
+    FROM case_parties p
+    LEFT JOIN residents r ON p.resident_id = r.id
+    WHERE p.case_id = ?
+    ORDER BY p.role ASC, p.id ASC
+  `).all(caseId) as CaseParty[];
+}
+
+// Replace all parties for a case and keep the legacy single-party columns in
+// sync (first complainant/respondent) so older documents keep working.
+export function setCaseParties(caseId: number, parties: { resident_id: number; role: 'complainant' | 'respondent' }[]): void {
+  const db = getDb();
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM case_parties WHERE case_id = ?').run(caseId);
+    const insert = db.prepare('INSERT INTO case_parties (case_id, resident_id, role) VALUES (?, ?, ?)');
+    for (const party of parties) {
+      if (!party.resident_id) continue;
+      insert.run(caseId, party.resident_id, party.role);
+    }
+    const firstComplainant = parties.find(p => p.role === 'complainant')?.resident_id ?? null;
+    const firstRespondent = parties.find(p => p.role === 'respondent')?.resident_id ?? null;
+    db.prepare('UPDATE cases SET complainant_id = ?, respondent_id = ? WHERE id = ?')
+      .run(firstComplainant, firstRespondent, caseId);
+  });
+  tx();
 }
 
 // ─── Summons ──────────────────────────────────────────────────────────────────

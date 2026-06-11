@@ -68,6 +68,38 @@ export function registerServerHandlers(): void {
     });
   });
 
+  // Self-test: call our own API the way an external app would, so the admin
+  // can confirm the key and endpoints work without leaving the app.
+  ipcMain.handle('server:test', async () => {
+    if (!httpServer) return { success: false, error: 'Server is not running' };
+    const addr = httpServer.address() as any;
+    const apiKey = getSetting('api_key') || '';
+
+    const get = (path: string): Promise<{ status: number; body: string }> =>
+      new Promise((resolve, reject) => {
+        const req = http.get(
+          { host: '127.0.0.1', port: addr?.port, path, headers: { 'X-API-Key': apiKey }, timeout: 5000 },
+          (res) => {
+            let body = '';
+            res.on('data', (chunk) => { body += chunk; });
+            res.on('end', () => resolve({ status: res.statusCode || 0, body }));
+          }
+        );
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
+      });
+
+    try {
+      const health = await get('/api/health');
+      const stats = await get('/api/stats');
+      if (health.status !== 200) return { success: false, error: `Health check failed (HTTP ${health.status})` };
+      if (stats.status !== 200) return { success: false, error: `Authenticated request failed (HTTP ${stats.status}) — check the API key` };
+      return { success: true, health: JSON.parse(health.body), stats: JSON.parse(stats.body) };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('server:status', async () => {
     if (!httpServer) {
       return { running: false };

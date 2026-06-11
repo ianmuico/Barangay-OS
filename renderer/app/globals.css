@@ -57,3 +57,100 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ─── Document editor (paper canvas) ─────────────────────────────────────── */
+.doc-page .ProseMirror {
+  outline: none;
+  min-height: 1em;
+}
+.doc-page .ProseMirror p.is-editor-empty:first-child::before {
+  color: #9ca3af;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.doc-page .ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 8px 0;
+}
+.doc-page .ProseMirror td,
+.doc-page .ProseMirror th {
+  border: 1px solid #000;
+  padding: 4px 8px;
+  vertical-align: top;
+  position: relative;
+}
+.doc-page .ProseMirror th {
+  background: #f3f4f6;
+  font-weight: bold;
+  text-align: left;
+}
+.doc-page .ProseMirror .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(59, 130, 246, 0.15);
+  pointer-events: none;
+}
+.doc-page .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+}
+.doc-page .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid #3b82f6;
+}
+.doc-page .ProseMirror span[data-chip].ProseMirror-selectednode,
+.doc-page .ProseMirror div[data-chip-block].ProseMirror-selectednode {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+/* Page break: prints invisibly (inline style) but shows a dashed marker while editing */
+.doc-page .ProseMirror div[data-page-break] {
+  display: block;
+  border-top: 2px dashed #60a5fa;
+  margin: 10px 0;
+  position: relative;
+  height: 14px !important;
+}
+.doc-page .ProseMirror div[data-page-break]::after {
+  content: 'Page Break';
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 9px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  padding: 1px 8px;
+  border-radius: 8px;
+  border: 1px solid #bfdbfe;
+}
+
+/* Hidden table borders render as faint dashed guides while editing */
+.doc-page .ProseMirror table[data-borderless] td,
+.doc-page .ProseMirror table[data-borderless] th,
+.doc-page .ProseMirror td[data-no-border],
+.doc-page .ProseMirror th[data-no-border] {
+  border: 1px dashed #d4d4d8;
+}
+.doc-page table[data-borderless] th,
+.doc-page td[data-no-border] {
+  background: transparent;
+}
+/* Pagination spacers — invisible, they push content past page gaps */
+.doc-page .pm-page-spacer {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Letterhead images stay a sane size everywhere — editor, previews, print */
+[data-letterhead] img {
+  max-height: 110px;
+  max-width: 240px;
+  object-fit: contain;
+  display: inline-block;
+}

@@ -22,11 +22,20 @@ export const TEMPLATE_VARIABLES = [
   { key: 'municipality', label: 'Municipality/City', description: 'Municipality or city name' },
   { key: 'province', label: 'Province', description: 'Province name' },
   { key: 'date', label: 'Current Date', description: 'Today\'s date formatted' },
+  { key: 'dateOrdinal', label: 'Date (Ordinal)', description: 'e.g., "10th day of June, 2026"' },
   { key: 'year', label: 'Current Year', description: 'Current year' },
   { key: 'religion', label: 'Religion', description: 'Resident\'s religion' },
   { key: 'citizenship', label: 'Citizenship', description: 'Resident\'s citizenship' },
   { key: 'philsysCardNo', label: 'PhilSys Card No.', description: 'National ID number' },
   { key: 'educationalAttainment', label: 'Educational Attainment', description: 'Highest education level' },
+  // Business variables — fill in automatically for documents created from the Businesses page
+  { key: 'businessName', label: 'Business Name', description: 'Name of the business' },
+  { key: 'businessNature', label: 'Business Nature', description: 'Nature/type of the business' },
+  { key: 'businessAddress', label: 'Business Address', description: 'Business address' },
+  { key: 'businessPurok', label: 'Business Purok', description: 'Purok where the business operates' },
+  { key: 'businessOwners', label: 'Business Owners', description: 'All owners, comma-separated' },
+  { key: 'businessStatus', label: 'Business Status', description: 'Active or Closed' },
+  { key: 'businessDateRegistered', label: 'Date Registered', description: 'Business registration date' },
 ];
 
 // Special template tags
@@ -61,4 +70,30 @@ export function getInitials(name: string): string {
     .join('')
     .toUpperCase()
     .slice(0, 2);
+}
+
+// ─── Template page visibility ────────────────────────────────────────────────
+// pages_json on a template lists where it appears; NULL/empty = everywhere.
+export const TEMPLATE_PAGES = [
+  { key: 'residents', label: 'Residents' },
+  { key: 'seniors', label: 'Senior Citizens' },
+  { key: 'indigents', label: 'Indigents' },
+  { key: 'youth', label: 'Youth' },
+  { key: 'four-ps', label: '4Ps Beneficiaries' },
+  { key: 'deceased', label: 'Deceased' },
+  { key: 'flagged', label: 'Flagged Residents' },
+  { key: 'generator', label: 'Generator' },
+  { key: 'cases', label: 'Cases & Summons' },
+  { key: 'businesses', label: 'Businesses' },
+];
+
+export function templateVisibleOn(t: { pages_json?: string | null }, pageKey?: string): boolean {
+  if (!pageKey || !t.pages_json) return true;
+  try {
+    const pages = JSON.parse(t.pages_json);
+    if (!Array.isArray(pages) || pages.length === 0) return true;
+    return pages.includes(pageKey);
+  } catch {
+    return true;
+  }
 }

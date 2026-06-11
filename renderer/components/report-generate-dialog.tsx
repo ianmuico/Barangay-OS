@@ -6,12 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
+import { ToggleRow } from '@/components/ui/toggle-chip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
-import { getAPI, type Resident, type ReportTemplate } from '@/lib/ipc';
+import { getAPI, type Resident, type ReportTemplate, type PaperSettings } from '@/lib/ipc';
+import { templateVisibleOn } from '@/lib/constants';
 import { toast } from 'sonner';
 
 interface ReportGenerateDialogProps {
@@ -20,6 +21,7 @@ interface ReportGenerateDialogProps {
   resident: Resident;
   /** Optional filter — only templates passing this predicate are shown */
   templateFilter?: (t: ReportTemplate) => boolean;
+  pageKey?: string; // hides templates tagged to other pages
 }
 
 // Convert field_name to readable label
@@ -35,10 +37,10 @@ interface TemplateInputGroup {
   fields: string[];
 }
 
-export function ReportGenerateDialog({ open, onClose, resident, templateFilter }: ReportGenerateDialogProps) {
+export function ReportGenerateDialog({ open, onClose, resident, templateFilter, pageKey }: ReportGenerateDialogProps) {
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [generatedReports, setGeneratedReports] = useState<{ templateName: string; html: string }[]>([]);
+  const [generatedReports, setGeneratedReports] = useState<{ templateName: string; html: string; paper?: PaperSettings }[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [generating, setGenerating] = useState(false);
 
@@ -53,7 +55,8 @@ export function ReportGenerateDialog({ open, onClose, resident, templateFilter }
       const api = getAPI();
       if (!api) return;
       api.getTemplates().then((all) => {
-        setTemplates(templateFilter ? all.filter(templateFilter) : all);
+        const visible = all.filter((t: ReportTemplate) => templateVisibleOn(t, pageKey));
+        setTemplates(templateFilter ? visible.filter(templateFilter) : visible);
       });
       setGeneratedReports([]);
       setSelectedIds(new Set());
@@ -135,12 +138,12 @@ export function ReportGenerateDialog({ open, onClose, resident, templateFilter }
     setGenerating(true);
     try {
       const ids = Array.from(selectedIds);
-      const results: { templateName: string; html: string }[] = [];
+      const results: { templateName: string; html: string; paper?: PaperSettings }[] = [];
       for (const tid of ids) {
         const result = await api.generateReport(tid, resident.id, values);
         if (result.success && result.html) {
           const tpl = templates.find(t => t.id === tid);
-          results.push({ templateName: tpl?.name || 'Report', html: result.html });
+          results.push({ templateName: tpl?.name || 'Report', html: result.html, paper: result.paper });
         }
       }
       setGeneratedReports(results);
@@ -159,11 +162,11 @@ export function ReportGenerateDialog({ open, onClose, resident, templateFilter }
     if (!api) return;
     const filename = `${resident.last_name}_${resident.first_name}_reports`;
     if (generatedReports.length === 1) {
-      const result = await api.exportPDF(generatedReports[0].html, filename);
+      const result = await api.exportPDF(generatedReports[0].html, filename, generatedReports[0].paper);
       if (result.success) toast.success('PDF saved');
       else toast.error(result.error || 'Failed');
     } else {
-      const result = await api.exportMultiPDF(generatedReports.map(r => r.html), filename);
+      const result = await api.exportMultiPDF(generatedReports.map(r => r.html), filename, generatedReports[0].paper);
       if (result.success) toast.success('PDF saved');
       else toast.error(result.error || 'Failed');
     }
@@ -177,7 +180,7 @@ export function ReportGenerateDialog({ open, onClose, resident, templateFilter }
       const pb = i < generatedReports.length - 1 ? '<div style="page-break-after:always"></div>' : '';
       return r.html + pb;
     }).join('\n');
-    const result = await api.printReport(combinedHtml);
+    const result = await api.printReport(combinedHtml, generatedReports[0].paper);
     if (result.success) toast.success('Print dialog opened');
     else toast.error(result.error || 'Failed');
   };
@@ -275,10 +278,9 @@ export function ReportGenerateDialog({ open, onClose, resident, templateFilter }
               <ScrollArea className="h-48 rounded-md border">
                 <div className="p-2 space-y-1">
                   {templates.map((t) => (
-                    <label key={t.id} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-accent cursor-pointer transition-colors">
-                      <Checkbox checked={selectedIds.has(t.id)} onCheckedChange={() => toggleTemplate(t.id)} />
-                      <span>{t.name}</span>
-                    </label>
+                    <ToggleRow key={t.id} checked={selectedIds.has(t.id)} onCheckedChange={() => toggleTemplate(t.id)}>
+                      {t.name}
+                    </ToggleRow>
                   ))}
                 </div>
               </ScrollArea>

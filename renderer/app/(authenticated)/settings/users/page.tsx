@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Camera } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,13 +29,37 @@ export default function UserManagementPage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [photos, setPhotos] = useState<Record<number, string>>({});
+
   const fetchUsers = async () => {
     const api = getAPI();
     if (!api) return;
-    setUsers(await api.getUsers());
+    const list = await api.getUsers();
+    setUsers(list);
+    // Load avatar photos for users that have one
+    const entries = await Promise.all(
+      list.filter(u => u.avatar_path).map(async (u) => {
+        const dataUrl = await api.getImageBase64(u.avatar_path!);
+        return [u.id, dataUrl] as const;
+      })
+    );
+    setPhotos(Object.fromEntries(entries.filter(([, v]) => v) as [number, string][]));
   };
 
   useEffect(() => { fetchUsers(); }, []);
+
+  const handleUploadPhoto = async (u: User) => {
+    const api = getAPI();
+    if (!api) return;
+    const result = await api.selectFile({
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    });
+    if (result.canceled || !result.filePaths?.length) return;
+    await api.saveAvatar(u.id, result.filePaths[0]);
+    toast.success('Photo updated');
+    fetchUsers();
+  };
 
   const openNew = () => {
     setEditUser(null); setUsername(''); setFullName(''); setPassword(''); setCurrentPassword(''); setRole('staff'); setFormOpen(true);
@@ -106,7 +130,19 @@ export default function UserManagementPage() {
           <Card key={u.id}>
             <CardContent className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <SquircleAvatar name={u.full_name || u.username} id={u.id} size="md" />
+                <div className="group relative">
+                  <SquircleAvatar name={u.full_name || u.username} id={u.id} size="md" src={photos[u.id]} />
+                  {(isAdmin || u.id === currentUser?.id) && (
+                    <button
+                      type="button"
+                      onClick={() => handleUploadPhoto(u)}
+                      title="Upload photo"
+                      className="absolute inset-0 flex items-center justify-center rounded-[22%] bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      <Camera className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
                 <div>
                   <p className="font-medium">{u.full_name || u.username}</p>
                   <p className="text-sm text-muted-foreground">@{u.username}</p>

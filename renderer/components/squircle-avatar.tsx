@@ -8,6 +8,7 @@ interface SquircleAvatarProps {
   id: number;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
+  src?: string | null; // photo data URL — falls back to initials when absent
 }
 
 const sizeMap = {
@@ -17,7 +18,7 @@ const sizeMap = {
   xl: { outer: 'w-16 h-16', text: 'text-xl' },
 };
 
-export function SquircleAvatar({ name, id, size = 'md', className }: SquircleAvatarProps) {
+export function SquircleAvatar({ name, id, size = 'md', className, src }: SquircleAvatarProps) {
   const [from, to] = getGradientForId(id);
   const initials = getInitials(name);
   const s = sizeMap[size];
@@ -26,15 +27,19 @@ export function SquircleAvatar({ name, id, size = 'md', className }: SquircleAva
     <div
       className={cn(
         s.outer,
-        'relative flex items-center justify-center text-white font-semibold shrink-0',
+        'relative flex items-center justify-center text-white font-semibold shrink-0 overflow-hidden',
         className
       )}
       style={{
-        background: `linear-gradient(135deg, ${from}, ${to})`,
+        background: src ? undefined : `linear-gradient(135deg, ${from}, ${to})`,
         borderRadius: '22%',
       }}
     >
-      <span className={s.text}>{initials}</span>
+      {src ? (
+        <img src={src} alt={name} className="h-full w-full object-cover" />
+      ) : (
+        <span className={s.text}>{initials}</span>
+      )}
     </div>
   );
 }

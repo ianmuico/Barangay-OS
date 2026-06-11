@@ -8,6 +8,7 @@ import { getSetting } from '../database/queries/settings';
 import { listOfficials } from '../database/queries/officials';
 import { logAudit } from '../database/queries/audit';
 import { getCurrentSessionUser } from './auth';
+import { PaperSettings, DEFAULT_PAPER, parsePaperJson, pageSizeCss, printToPdfPageSize } from '../utils/paper';
 
 function calculateAge(birthDate: string): number {
   const today = new Date();
@@ -28,6 +29,21 @@ function formatDate(date: Date): string {
   });
 }
 
+function ordinal(n: number): string {
+  const rem10 = n % 10;
+  const rem100 = n % 100;
+  if (rem10 === 1 && rem100 !== 11) return `${n}st`;
+  if (rem10 === 2 && rem100 !== 12) return `${n}nd`;
+  if (rem10 === 3 && rem100 !== 13) return `${n}rd`;
+  return `${n}th`;
+}
+
+// "10th day of June, 2026" — the legalese form used in certificates
+function formatDateOrdinal(date: Date): string {
+  const month = date.toLocaleDateString('en-PH', { month: 'long' });
+  return `${ordinal(date.getDate())} day of ${month}, ${date.getFullYear()}`;
+}
+
 function buildHeaderHtml(): string {
   // Check if user has a custom header template stored
   const customHeader = getSetting('header_template');
@@ -46,7 +62,7 @@ function buildHeaderHtml(): string {
     } else {
       html = html.replace(/\{\{logo\}\}/g, '');
     }
-    return html;
+    return `<div data-letterhead>${html}</div>`;
   }
 
   // Default header matching the actual report format
@@ -59,7 +75,7 @@ function buildHeaderHtml(): string {
     ? `<img src="${logoBase64}" style="width:70px;height:70px;object-fit:contain;" />`
     : '';
 
-  return `<div style="text-align:center;margin-bottom:16px;">
+  return `<div data-letterhead style="text-align:center;margin-bottom:16px;">
     <table style="width:100%;border:none;border-collapse:collapse;">
       <tr>
         <td style="width:80px;text-align:center;border:none;padding:0;vertical-align:middle;">${logoImg}</td>
@@ -75,17 +91,31 @@ function buildHeaderHtml(): string {
   </div>`;
 }
 
+function findOfficialByRole(officials: any[], role: string): any | undefined {
+  // Normalize both sides to bare alphanumerics so "punong_barangay" matches "Punong Barangay"
+  const roleKey = role.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return officials.find(o => {
+    const pos = o.position.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return pos.includes(roleKey) || roleKey.includes(pos);
+  });
+}
+
+function officialFullName(official: any): string {
+  return [official.first_name, official.last_name].filter(Boolean).join(' ');
+}
+
 function resolveSignatories(html: string): string {
   const officials = listOfficials();
 
-  return html.replace(/\{\{signatory:(\w+)\}\}/g, (match, role) => {
-    const roleLower = role.toLowerCase();
+  // {{official:role}} — inline name only (e.g. inside a sentence)
+  let result = html.replace(/\{\{official:(\w+)\}\}/g, (match, role) => {
+    const official = findOfficialByRole(officials, role);
+    if (official) return escapeHtml(officialFullName(official));
+    return `<span style="color:#666;text-decoration:underline;">___${role}___</span>`;
+  });
 
-    // Find official by position (case-insensitive partial match)
-    const official = officials.find(o => {
-      const pos = o.position.toLowerCase().replace(/[^a-z]/g, '');
-      return pos.includes(roleLower) || roleLower.includes(pos);
-    });
+  return result.replace(/\{\{signatory:(\w+)\}\}/g, (match, role) => {
+    const official = findOfficialByRole(officials, role);
 
     if (official) {
       const name = [official.first_name, official.last_name].filter(Boolean).join(' ');
@@ -162,6 +192,7 @@ function resolveVariables(html: string, resident: any, inputValues?: Record<stri
     municipality: getSetting('municipality') || '',
     province: getSetting('province') || '',
     date: formatDate(new Date()),
+    dateOrdinal: formatDateOrdinal(new Date()),
     year: String(new Date().getFullYear()),
   };
 
@@ -198,11 +229,30 @@ function getLogoBase64(): string | null {
   return `data:${mime};base64,${data.toString('base64')}`;
 }
 
-function buildFullHtml(html: string): string {
+// Watermark display settings — admin-tunable in Settings → Barangay
+function getWatermarkSettings(): { enabled: boolean; size: number; opacity: number } {
+  const enabled = getSetting('watermark_enabled') !== '0'; // on by default
+  const size = Math.min(800, Math.max(100, parseInt(getSetting('watermark_size') || '420', 10) || 420));
+  const opacity = Math.min(0.5, Math.max(0.01, parseFloat(getSetting('watermark_opacity') || '0.06') || 0.06));
+  return { enabled, size, opacity };
+}
+
+function buildFullHtml(html: string, paper: PaperSettings = DEFAULT_PAPER): string {
   const barangayName = getSetting('barangay_name') || 'BARANGAY';
   const logoBase64 = getLogoBase64();
+  const m = paper.margins;
+  const wm = getWatermarkSettings();
 
-  const watermarkContent = logoBase64
+  // Custom documents keep their letterhead as a template marker so it always
+  // reflects the current Settings → Barangay header. Resolve it now.
+  if (/data-chip-block="header"|\{\{header\}\}/.test(html)) {
+    const headerHtml = buildHeaderHtml();
+    html = html
+      .replace(/<div[^>]*data-chip-block="header"[^>]*>\s*<\/div>/g, headerHtml)
+      .replace(/\{\{header\}\}/g, headerHtml);
+  }
+
+  const watermarkContent = !wm.enabled ? '' : logoBase64
     ? `<img src="${logoBase64}" class="watermark" />`
     : `<svg class="watermark" viewBox="0 0 420 420" xmlns="http://www.w3.org/2000/svg">
         <circle cx="210" cy="210" r="195" fill="none" stroke="#1a1a1a" stroke-width="4"/>
@@ -218,7 +268,7 @@ function buildFullHtml(html: string): string {
 <head>
   <meta charset="utf-8">
   <style>
-    @page { size: A4; margin: 1in; }
+    @page { size: ${pageSizeCss(paper)}; margin: ${m.top}in ${m.right}in ${m.bottom}in ${m.left}in; }
     body {
       font-family: 'Times New Roman', serif;
       font-size: 12pt;
@@ -226,21 +276,28 @@ function buildFullHtml(html: string): string {
       color: #000;
       position: relative;
     }
+    .page-break { page-break-after: always; break-after: page; height: 0; border: none; margin: 0; }
     .watermark {
       position: fixed;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      opacity: 0.06;
+      opacity: ${wm.opacity};
       z-index: -1;
-      width: 420px;
-      height: 420px;
+      width: ${wm.size}px;
+      height: ${wm.size}px;
       pointer-events: none;
       object-fit: contain;
     }
     h1, h2, h3 { margin-top: 0; }
     table { border-collapse: collapse; width: 100%; }
     td, th { border: 1px solid #000; padding: 4px 8px; }
+    /* Borders hidden in the document editor stay hidden in print */
+    table[data-borderless] td, table[data-borderless] th,
+    td[data-no-border], th[data-no-border] { border: none !important; }
+    img { max-width: 100%; }
+    [data-letterhead] img { max-height: 110px; max-width: 240px; object-fit: contain; }
+    .pm-page-spacer { display: none; }
   </style>
 </head>
 <body>
@@ -288,23 +345,24 @@ export function registerReportHandlers(): void {
     logAudit(user?.id || null, 'REPORT_GENERATED',
       `Generated "${template.name}" for ${resident.first_name} ${resident.last_name}`);
 
-    return { success: true, html: resolvedHtml, reportId };
+    return { success: true, html: resolvedHtml, reportId, paper: parsePaperJson(template.paper_json) };
   });
 
-  ipcMain.handle('reports:exportPDF', async (_event, html: string, filename: string) => {
+  ipcMain.handle('reports:exportPDF', async (_event, html: string, filename: string, paperInput?: PaperSettings) => {
     try {
+      const paper = parsePaperJson(paperInput ? JSON.stringify(paperInput) : null);
       const printWindow = new BrowserWindow({
         show: false,
         webPreferences: { nodeIntegration: false, contextIsolation: true },
       });
 
-      const fullHtml = buildFullHtml(html);
+      const fullHtml = buildFullHtml(html, paper);
       await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`);
 
       const pdfBuffer = await printWindow.webContents.printToPDF({
         printBackground: true,
-        landscape: false,
-        pageSize: 'A4',
+        landscape: paper.orientation === 'landscape',
+        pageSize: printToPdfPageSize(paper),
       });
 
       printWindow.close();
@@ -326,14 +384,15 @@ export function registerReportHandlers(): void {
     }
   });
 
-  ipcMain.handle('reports:print', async (_event, html: string) => {
+  ipcMain.handle('reports:print', async (_event, html: string, paperInput?: PaperSettings) => {
     try {
+      const paper = parsePaperJson(paperInput ? JSON.stringify(paperInput) : null);
       const printWindow = new BrowserWindow({
         show: false,
         webPreferences: { nodeIntegration: false, contextIsolation: true },
       });
 
-      const fullHtml = buildFullHtml(html);
+      const fullHtml = buildFullHtml(html, paper);
       await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`);
 
       // Small delay to ensure content is fully rendered
@@ -360,7 +419,7 @@ export function registerReportHandlers(): void {
     const resident = getResidentById(residentId);
     if (!resident) return { success: false, error: 'Resident not found' };
 
-    const results: { templateName: string; html: string }[] = [];
+    const results: { templateName: string; html: string; paper: PaperSettings }[] = [];
     const user = getCurrentSessionUser();
 
     for (const tid of templateIds) {
@@ -373,7 +432,7 @@ export function registerReportHandlers(): void {
         content_html: resolvedHtml,
         generated_by: user?.id || 0,
       });
-      results.push({ templateName: template.name, html: resolvedHtml });
+      results.push({ templateName: template.name, html: resolvedHtml, paper: parsePaperJson(template.paper_json) });
     }
 
     logAudit(user?.id || null, 'REPORT_BATCH_GENERATED',
@@ -383,8 +442,9 @@ export function registerReportHandlers(): void {
   });
 
   // Export multi-page PDF (each template on its own page)
-  ipcMain.handle('reports:exportMultiPDF', async (_event, htmlPages: string[], filename: string) => {
+  ipcMain.handle('reports:exportMultiPDF', async (_event, htmlPages: string[], filename: string, paperInput?: PaperSettings) => {
     try {
+      const paper = parsePaperJson(paperInput ? JSON.stringify(paperInput) : null);
       const printWindow = new BrowserWindow({
         show: false,
         webPreferences: { nodeIntegration: false, contextIsolation: true },
@@ -395,13 +455,13 @@ export function registerReportHandlers(): void {
         return `<div style="${pageBreak}">${html}</div>`;
       }).join('\n');
 
-      const fullHtml = buildFullHtml(combinedHtml);
+      const fullHtml = buildFullHtml(combinedHtml, paper);
       await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`);
 
       const pdfBuffer = await printWindow.webContents.printToPDF({
         printBackground: true,
-        landscape: false,
-        pageSize: 'A4',
+        landscape: paper.orientation === 'landscape',
+        pageSize: printToPdfPageSize(paper),
       });
 
       printWindow.close();
@@ -555,8 +615,9 @@ export function registerReportHandlers(): void {
       const province = getSetting('province') || '';
       const logoBase64 = getLogoBase64();
 
-      const watermark = logoBase64
-        ? `<img src="${logoBase64}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.05;width:400px;height:400px;object-fit:contain;z-index:-1;pointer-events:none;" />`
+      const wm = getWatermarkSettings();
+      const watermark = wm.enabled && logoBase64
+        ? `<img src="${logoBase64}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:${wm.opacity};width:${wm.size}px;height:${wm.size}px;object-fit:contain;z-index:-1;pointer-events:none;" />`
         : '';
 
       const tableHeaders = options.columns.map(c => `<th>${c.label}</th>`).join('');
@@ -610,8 +671,9 @@ export function registerReportHandlers(): void {
       const province = getSetting('province') || '';
       const logoBase64 = getLogoBase64();
 
-      const watermark = logoBase64
-        ? `<img src="${logoBase64}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.05;width:400px;height:400px;object-fit:contain;z-index:-1;pointer-events:none;" />`
+      const wm = getWatermarkSettings();
+      const watermark = wm.enabled && logoBase64
+        ? `<img src="${logoBase64}" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:${wm.opacity};width:${wm.size}px;height:${wm.size}px;object-fit:contain;z-index:-1;pointer-events:none;" />`
         : '';
 
       const tableHeaders = options.columns.map(c => `<th>${c.label}</th>`).join('');

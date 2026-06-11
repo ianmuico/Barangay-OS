@@ -12,7 +12,54 @@
     "build": "npm run build:next && npm run build:main",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "release": "npm run build && electron-builder --win --publish always",
     "postinstall": "electron-rebuild"
+  },
+  "build": {
+    "appId": "ph.barangay.management",
+    "productName": "Barangay Management System",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main/dist/**/*",
+      "renderer/out/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "BarangayManagement-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "mmmsss211",
+        "repo": "barangay-management",
+        "private": true
+      }
+    ]
   },
   "keywords": [
     "barangay",

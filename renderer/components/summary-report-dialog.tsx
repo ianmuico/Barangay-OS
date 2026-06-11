@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
-import { getAPI, type DashboardStats, type DetailedStats } from '@/lib/ipc';
+import { getAPI, type DashboardStats, type DetailedStats, type Official } from '@/lib/ipc';
 import { toast } from 'sonner';
 
 // ─── Types ───
@@ -25,6 +25,7 @@ interface ReportData {
   femaleCount: number;
   childrenCount: number;
   adultCount: number;
+  officials: Official[];
 }
 
 // ─── Helpers ───
@@ -59,6 +60,7 @@ function buildReportHTML(data: ReportData): string {
     femaleCount,
     childrenCount,
     adultCount,
+    officials,
   } = data;
 
   const barangayName = settings.barangay_name || 'Barangay';
@@ -114,6 +116,15 @@ function buildReportHTML(data: ReportData): string {
             <td style="padding: 3px 8px;">Total Households</td>
             <td style="padding: 3px 8px; font-weight: bold; text-align: right;">${totalHouseholds}</td>
           </tr>
+          <tr>
+            <td style="padding: 3px 8px;">Deceased (on record)</td>
+            <td style="padding: 3px 8px; font-weight: bold; text-align: right;">${detailed.deceasedCount ?? 0}</td>
+          </tr>
+          ${(detailed.civilStatusDistribution || []).map(c => `
+          <tr>
+            <td style="padding: 3px 8px; padding-left: 24px; color: #444;">${c.status}</td>
+            <td style="padding: 3px 8px; text-align: right;">${c.count}</td>
+          </tr>`).join('')}
         </table>
       </div>
 
@@ -154,7 +165,7 @@ function buildReportHTML(data: ReportData): string {
           </tr>
           <tr>
             <td style="padding: 3px 8px;">Registered Voters</td>
-            <td style="padding: 3px 8px; font-weight: bold; text-align: right;">${totalVoters}</td>
+            <td style="padding: 3px 8px; font-weight: bold; text-align: right;">${totalVoters}${stats.totalResidents > 0 ? ` (${Math.round((totalVoters / stats.totalResidents) * 100)}%)` : ''}</td>
           </tr>
         </table>
       </div>
@@ -180,6 +191,34 @@ function buildReportHTML(data: ReportData): string {
         </table>
       </div>
 
+      <!-- Cases & Summons -->
+      ${detailed.caseStats ? `
+      <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 12pt; font-weight: bold; margin: 0 0 8px; border-bottom: 1px solid #000; padding-bottom: 4px;">V. KATARUNGANG PAMBARANGAY (CASES)</h4>
+        <table style="width: 100%; border-collapse: collapse; font-size: 12pt;">
+          <tr>
+            <td style="padding: 3px 8px; width: 60%;">Total Cases Filed</td>
+            <td style="padding: 3px 8px; font-weight: bold; text-align: right;">${detailed.caseStats.total}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 8px; padding-left: 24px; color: #444;">Pending</td>
+            <td style="padding: 3px 8px; text-align: right;">${detailed.caseStats.pending}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 8px; padding-left: 24px; color: #444;">Ongoing</td>
+            <td style="padding: 3px 8px; text-align: right;">${detailed.caseStats.ongoing}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 8px; padding-left: 24px; color: #444;">Resolved</td>
+            <td style="padding: 3px 8px; text-align: right;">${detailed.caseStats.resolved}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 8px; padding-left: 24px; color: #444;">Dismissed</td>
+            <td style="padding: 3px 8px; text-align: right;">${detailed.caseStats.dismissed}</td>
+          </tr>
+        </table>
+      </div>` : ''}
+
       <!-- Footer -->
       <div style="margin-top: 40px;">
         <p style="font-size: 11pt; color: #555;">Report generated on ${today}</p>
@@ -187,6 +226,10 @@ function buildReportHTML(data: ReportData): string {
           <p style="margin: 0; font-size: 11pt;">Prepared by:</p>
           <div style="margin-top: 32px; width: 250px;">
             <hr style="border: none; border-top: 1px solid #000; margin-bottom: 4px;" />
+            <p style="margin: 0; font-size: 11pt; text-align: center; font-weight: bold;">${(() => {
+              const pb = officials.find(o => /punong|captain|chairman/i.test(o.position));
+              return pb ? [pb.first_name, pb.last_name].filter(Boolean).join(' ').toUpperCase() : '';
+            })()}</p>
             <p style="margin: 0; font-size: 11pt; text-align: center;">Punong Barangay</p>
           </div>
         </div>
@@ -228,11 +271,16 @@ export function SummaryReportDialog({ open, onClose }: SummaryReportDialogProps)
       const maleCount = maleEntry?.count ?? 0;
       const femaleCount = femaleEntry?.count ?? 0;
 
-      // Count voters from full resident list
-      const voterRes = await api.getResidents({ status: 'living', page: 1, limit: 99999 });
-      const totalVoters = voterRes.data.filter(
-        r => r.voter_status && r.voter_status.toLowerCase() === 'registered',
-      ).length;
+      // Voter count comes from the stats endpoint; fall back to a full scan
+      let totalVoters = detailed.voterStats?.registered ?? -1;
+      if (totalVoters < 0) {
+        const voterRes = await api.getResidents({ status: 'living', page: 1, limit: 99999 });
+        totalVoters = voterRes.data.filter(
+          r => r.voter_status && r.voter_status.toLowerCase() === 'registered',
+        ).length;
+      }
+
+      const officials = (await api.getOfficials()).filter(o => o.is_active);
 
       // Count households
       const allHouseholds = await api.getHouseholds({});
@@ -253,6 +301,7 @@ export function SummaryReportDialog({ open, onClose }: SummaryReportDialogProps)
         femaleCount,
         childrenCount,
         adultCount,
+        officials,
       };
 
       setReportData(data);

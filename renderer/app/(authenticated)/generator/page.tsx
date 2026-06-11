@@ -9,10 +9,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
+import { ToggleRow } from '@/components/ui/toggle-chip';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { getAPI, type Resident, type ReportTemplate } from '@/lib/ipc';
-import { getGradientForId, getInitials } from '@/lib/constants';
+import { getAPI, type Resident, type ReportTemplate, type PaperSettings } from '@/lib/ipc';
+import { getGradientForId, getInitials, templateVisibleOn } from '@/lib/constants';
 import { toast } from 'sonner';
 
 // Convert field_name to readable label
@@ -33,7 +33,7 @@ export default function GeneratorPage() {
   const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<number>>(new Set());
-  const [generatedReports, setGeneratedReports] = useState<{ templateId: number; templateName: string; html: string }[]>([]);
+  const [generatedReports, setGeneratedReports] = useState<{ templateId: number; templateName: string; html: string; paper?: PaperSettings }[]>([]);
   const [activePreviewIdx, setActivePreviewIdx] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -50,7 +50,7 @@ export default function GeneratorPage() {
   useEffect(() => {
     const api = getAPI();
     if (!api) return;
-    api.getTemplates().then(setTemplates);
+    api.getTemplates().then(all => setTemplates(all.filter(t => templateVisibleOn(t, 'generator'))));
     api.getLogoBase64().then(setLogoBase64);
   }, []);
 
@@ -143,12 +143,12 @@ export default function GeneratorPage() {
     setGenerating(true);
     try {
       const ids = Array.from(selectedTemplateIds);
-      const reports: { templateId: number; templateName: string; html: string }[] = [];
+      const reports: { templateId: number; templateName: string; html: string; paper?: PaperSettings }[] = [];
       for (const tid of ids) {
         const result = await api.generateReport(tid, selectedResident.id, values);
         if (result.success && result.html) {
           const tpl = templates.find(t => t.id === tid);
-          reports.push({ templateId: tid, templateName: tpl?.name || 'Report', html: result.html });
+          reports.push({ templateId: tid, templateName: tpl?.name || 'Report', html: result.html, paper: result.paper });
         }
       }
       setGeneratedReports(reports);
@@ -169,11 +169,11 @@ export default function GeneratorPage() {
     try {
       const filename = `reports-${selectedResident.last_name}-${Date.now()}`;
       if (generatedReports.length === 1) {
-        const result = await api.exportPDF(generatedReports[0].html, filename);
+        const result = await api.exportPDF(generatedReports[0].html, filename, generatedReports[0].paper);
         if (result.success) toast.success('PDF saved');
         else toast.error(result.error || 'Failed');
       } else {
-        const result = await api.exportMultiPDF(generatedReports.map(r => r.html), filename);
+        const result = await api.exportMultiPDF(generatedReports.map(r => r.html), filename, generatedReports[0].paper);
         if (result.success) toast.success(`PDF saved with ${generatedReports.length} pages`);
         else toast.error(result.error || 'Failed');
       }
@@ -192,7 +192,7 @@ export default function GeneratorPage() {
         const pb = i < generatedReports.length - 1 ? '<div style="page-break-after:always"></div>' : '';
         return r.html + pb;
       }).join('\n');
-      const result = await api.printReport(combinedHtml);
+      const result = await api.printReport(combinedHtml, generatedReports[0].paper);
       if (result.success) toast.success('Print dialog opened');
       else toast.error(result.error || 'Failed');
     } finally {
@@ -331,10 +331,9 @@ export default function GeneratorPage() {
                   <ScrollArea className="h-40 rounded-md border">
                     <div className="p-2 space-y-1">
                       {templates.map((t) => (
-                        <label key={t.id} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-accent cursor-pointer transition-colors">
-                          <Checkbox checked={selectedTemplateIds.has(t.id)} onCheckedChange={() => toggleTemplate(t.id)} />
-                          <span className="truncate">{t.name}</span>
-                        </label>
+                        <ToggleRow key={t.id} checked={selectedTemplateIds.has(t.id)} onCheckedChange={() => toggleTemplate(t.id)}>
+                          {t.name}
+                        </ToggleRow>
                       ))}
                       {templates.length === 0 && <p className="text-xs text-muted-foreground p-2">No templates yet.</p>}
                     </div>

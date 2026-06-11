@@ -1,8 +1,30 @@
 import { autoUpdater } from 'electron-updater';
-import { BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import fs from 'fs';
+import path from 'path';
 import { logInfo, logError } from './logger';
 
 let mainWin: BrowserWindow | null = null;
+
+// The releases repo is private, so installed apps need a GitHub token to
+// check/download updates. The token is read from `update-token.txt` placed
+// either next to the installed app's resources or in the app data folder.
+// See RELEASING.md for how to generate and deploy it.
+function loadUpdateToken(): string | null {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'update-token.txt'),
+    path.join(app.getPath('userData'), 'update-token.txt'),
+  ];
+  for (const file of candidates) {
+    try {
+      if (file && fs.existsSync(file)) {
+        const token = fs.readFileSync(file, 'utf-8').trim();
+        if (token) return token;
+      }
+    } catch { /* try next location */ }
+  }
+  return process.env.GH_TOKEN || null;
+}
 
 export function initAutoUpdater(window: BrowserWindow): void {
   mainWin = window;
@@ -10,6 +32,20 @@ export function initAutoUpdater(window: BrowserWindow): void {
   // Configure — suppress auto-download so user can confirm
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
+
+  const token = loadUpdateToken();
+  if (token) {
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'mmmsss211',
+      repo: 'barangay-management',
+      private: true,
+      token,
+    });
+    logInfo('Updater: using private GitHub releases feed.');
+  } else {
+    logInfo('Updater: no update token found — update checks will fail for a private repo. See RELEASING.md.');
+  }
 
   autoUpdater.on('checking-for-update', () => {
     logInfo('Checking for updates...');

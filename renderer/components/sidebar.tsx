@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, UserCheck, HeartHandshake, Baby,
   GitBranch, FileSearch, FileText, Landmark,
   Settings, Building2, Shield, Database, Wifi, Info,
-  ChevronDown, Loader2, Heart, Archive, Scale,
+  ChevronDown, Loader2, Heart, Archive, Scale, Bell, FolderOpen, Flag, Store, UserPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -52,13 +52,17 @@ const navGroups: NavGroup[] = [
       { href: '/four-ps', label: '4Ps Beneficiaries', icon: Heart },
       { href: '/family-tree', label: 'Family Tree', icon: GitBranch },
       { href: '/deceased', label: 'Deceased', icon: Archive },
+      { href: '/flagged', label: 'Flagged Residents', icon: Flag },
     ],
   },
   {
     label: 'Documents',
     items: [
       { href: '/cases', label: 'Cases & Summons', icon: Scale },
+      { href: '/businesses', label: 'Businesses', icon: Store },
+      { href: '/outsiders', label: 'Outside Owners', icon: UserPlus },
       { href: '/generator', label: 'Generator', icon: FileSearch },
+      { href: '/documents', label: 'Saved Documents', icon: FolderOpen },
       { href: '/templates', label: 'Templates', icon: FileText },
       { href: '/officials', label: 'Officials', icon: Landmark },
     ],
@@ -70,6 +74,7 @@ const settingsItems: NavItem[] = [
   { href: '/settings/users', label: 'User Management', icon: Shield },
   { href: '/settings/backup', label: 'Backup & Restore', icon: Database },
   { href: '/settings/online', label: 'Online Mode', icon: Wifi },
+  { href: '/settings/notifications', label: 'Notifications', icon: Bell },
 ];
 
 function NavLink({

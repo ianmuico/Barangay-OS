@@ -1,4 +1,5 @@
 import { getDb } from '../connection';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface Resident {
   id: number;
@@ -30,6 +31,7 @@ export interface Resident {
   is_4ps: number;
   status: string;
   import_batch_id: number | null;
+  resident_uid?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -136,7 +138,11 @@ export function listResidents(params: ResidentQueryParams = {}): PaginatedResult
   const offset = (page - 1) * limit;
   const data = db.prepare(`
     SELECT *,
-      CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) as age
+      CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) as age,
+      (SELECT COUNT(*) FROM case_parties p WHERE p.resident_id = residents.id) +
+        (SELECT COUNT(*) FROM cases c WHERE (c.complainant_id = residents.id OR c.respondent_id = residents.id)
+          AND NOT EXISTS (SELECT 1 FROM case_parties p2 WHERE p2.case_id = c.id)) as case_count,
+      (SELECT COUNT(*) FROM resident_issues i WHERE i.resident_id = residents.id AND i.status = 'open') as open_issues
     FROM residents
     ${whereClause}
     ORDER BY ${safeSortBy} ${safeSortOrder}
@@ -159,6 +165,15 @@ export function getResidentById(id: number): (Resident & { age: number }) | unde
       CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) as age
     FROM residents WHERE id = ?
   `).get(id) as (Resident & { age: number }) | undefined;
+}
+
+export function getResidentByUid(uid: string): (Resident & { age: number }) | undefined {
+  const db = getDb();
+  return db.prepare(`
+    SELECT *,
+      CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) as age
+    FROM residents WHERE resident_uid = ?
+  `).get(uid) as (Resident & { age: number }) | undefined;
 }
 
 export function searchResidents(query: string, limit: number = 20): (Resident & { age: number })[] {
@@ -204,8 +219,8 @@ export function createResident(data: Partial<Resident> & { first_name: string; l
       is_indigent, voter_status, blood_type, photo_path, household_id,
       partner_id, mother_id, father_id, notes,
       religion, citizenship, philsys_card_no, educational_attainment,
-      is_4ps, status, import_batch_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_4ps, status, import_batch_id, resident_uid
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.first_name, data.middle_name || null, data.last_name, data.suffix || null,
     data.birth_date, data.gender, data.civil_status, data.address || '',
@@ -215,7 +230,7 @@ export function createResident(data: Partial<Resident> & { first_name: string; l
     data.mother_id || null, data.father_id || null, data.notes || null,
     data.religion || null, data.citizenship || 'Filipino', data.philsys_card_no || null,
     data.educational_attainment || null, data.is_4ps || 0, data.status || 'living',
-    data.import_batch_id || null
+    data.import_batch_id || null, uuidv4()
   );
   const newId = result.lastInsertRowid as number;
 
