@@ -165,6 +165,7 @@ function runInlineMigrations(db: Database.Database): void {
     { name: '013_issues_businesses_template_pages.sql', sql: MIGRATION_013 },
     { name: '014_business_documents.sql',          sql: MIGRATION_014 },
     { name: '015_resident_uid.sql',                sql: MIGRATION_015 },
+    { name: '016_pwd.sql',                         sql: MIGRATION_016 },
     // ─── Add future migrations here ────────────────────────────────────
   ];
 
@@ -435,6 +436,13 @@ ALTER TABLE residents ADD COLUMN death_date TEXT;
 const MIGRATION_010 = `
 -- Per-template paper settings: {"size":"A4"|"Letter"|"Long","orientation":"portrait"|"landscape","margins":{"top":1,"bottom":1,"left":1,"right":1}} (margins in inches)
 ALTER TABLE report_templates ADD COLUMN paper_json TEXT;
+`;
+
+const MIGRATION_016 = `
+-- PWD (Persons with Disability, RA 10754) flag with an optional note
+ALTER TABLE residents ADD COLUMN is_pwd INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE residents ADD COLUMN pwd_note TEXT;
+CREATE INDEX IF NOT EXISTS idx_residents_is_pwd ON residents(is_pwd);
 `;
 
 const MIGRATION_015 = `

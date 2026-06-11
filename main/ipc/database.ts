@@ -317,6 +317,7 @@ export function registerDatabaseHandlers(): void {
       totalIndigents: residents.getIndigentCount(),
       totalYouth: residents.getYouthCount(),
       total4Ps: residents.get4PsCount(),
+      totalPWD: residents.getPwdCount(),
     };
   });
 
@@ -1224,6 +1225,16 @@ export function registerDatabaseHandlers(): void {
             );
           }
         }
+
+        // Ensure every generated resident has a permanent UID (QR codes)
+        db.exec(`
+          UPDATE residents SET resident_uid =
+            lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' ||
+            substr(lower(hex(randomblob(2))), 2) || '-' ||
+            substr('89ab', (abs(random()) % 4) + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' ||
+            lower(hex(randomblob(6)))
+          WHERE resident_uid IS NULL
+        `);
 
         // Log
         audit.logAudit(null, 'TEST_DATA_FILLED',

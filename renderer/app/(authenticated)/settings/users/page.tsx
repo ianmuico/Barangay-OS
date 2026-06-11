@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Camera } from 'lucide-react';
+import { Plus, Pencil, Trash2, Camera, KeyRound, Printer } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,9 @@ export default function UserManagementPage() {
   const [saving, setSaving] = useState(false);
 
   const [photos, setPhotos] = useState<Record<number, string>>({});
+  const [recoveryRemaining, setRecoveryRemaining] = useState<number | null>(null);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  const [generatingCodes, setGeneratingCodes] = useState(false);
 
   const fetchUsers = async () => {
     const api = getAPI();
@@ -46,7 +49,44 @@ export default function UserManagementPage() {
     setPhotos(Object.fromEntries(entries.filter(([, v]) => v) as [number, string][]));
   };
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => {
+    fetchUsers();
+    const api = getAPI();
+    if (api) api.getRecoveryStatus().then(r => setRecoveryRemaining(r.remaining)).catch(() => {});
+  }, []);
+
+  const handleGenerateCodes = async () => {
+    const api = getAPI();
+    if (!api) return;
+    setGeneratingCodes(true);
+    try {
+      const result = await api.generateRecoveryCodes();
+      if (result.success && result.codes) {
+        setRecoveryCodes(result.codes);
+        setRecoveryRemaining(result.codes.length);
+      } else {
+        toast.error(result.error || 'Failed to generate codes');
+      }
+    } finally { setGeneratingCodes(false); }
+  };
+
+  const handlePrintCodes = async () => {
+    const api = getAPI();
+    if (!api || !recoveryCodes) return;
+    const html = `
+      <div style="padding-top:30px;">
+        <h2 style="margin:0 0 4px;">Password Recovery Codes</h2>
+        <p style="margin:0 0 16px;font-size:10pt;color:#444;">
+          Keep this paper in the barangay safe. Each code can reset ONE account password, once.
+          Generating new codes invalidates these.
+        </p>
+        <table style="border-collapse:collapse;font-size:14pt;font-family:monospace;">
+          ${recoveryCodes.map((c, i) => `<tr><td style="border:1px solid #000;padding:8px 16px;">${i + 1}.</td><td style="border:1px solid #000;padding:8px 24px;letter-spacing:2px;">${c}</td></tr>`).join('')}
+        </table>
+        <p style="margin-top:16px;font-size:9pt;color:#666;">Generated ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })} — use via "Forgot password?" on the login screen.</p>
+      </div>`;
+    await api.printReport(html);
+  };
 
   const handleUploadPhoto = async (u: User) => {
     const api = getAPI();
@@ -163,6 +203,55 @@ export default function UserManagementPage() {
           </Card>
         ))}
       </div>
+
+      {/* ─── Account Recovery (forgotten passwords) ─── */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base"><KeyRound className="h-4 w-4" />Account Recovery</CardTitle>
+            <CardDescription>
+              If a password is forgotten — including the admin&apos;s — a printed recovery code can reset it from the
+              login screen. Generate the codes now, print them, and keep the paper somewhere safe (not taped to the monitor).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-3">
+            <Button variant="outline" onClick={handleGenerateCodes} disabled={generatingCodes}>
+              {generatingCodes ? 'Generating...' : recoveryRemaining ? 'Regenerate Codes' : 'Generate Recovery Codes'}
+            </Button>
+            {recoveryRemaining !== null && (
+              <p className="text-sm text-muted-foreground">
+                {recoveryRemaining > 0
+                  ? `${recoveryRemaining} unused code${recoveryRemaining === 1 ? '' : 's'} on file`
+                  : 'No recovery codes set up yet — if the admin password is lost, recovery requires technical support.'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Codes shown exactly once after generation */}
+      <Dialog open={!!recoveryCodes} onOpenChange={() => setRecoveryCodes(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Your Recovery Codes</DialogTitle>
+            <DialogDescription>
+              These are shown only once. Print them and store the paper securely — anyone holding a code can reset a password.
+              Any previously generated codes no longer work.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            {(recoveryCodes || []).map((c, i) => (
+              <div key={c} className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-1.5 font-mono text-sm tracking-widest">
+                <span className="text-muted-foreground">{i + 1}.</span>{c}
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecoveryCodes(null)}>Done</Button>
+            <Button onClick={handlePrintCodes}><Printer className="mr-2 h-4 w-4" />Print Codes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent>

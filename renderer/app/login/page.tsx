@@ -25,6 +25,42 @@ export default function LoginPage() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [loggedInUserId, setLoggedInUserId] = useState<number | null>(null);
 
+  // Forgot-password recovery (uses a printed one-time recovery code)
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recUsername, setRecUsername] = useState('');
+  const [recCode, setRecCode] = useState('');
+  const [recPassword, setRecPassword] = useState('');
+  const [recConfirm, setRecConfirm] = useState('');
+  const [recovering, setRecovering] = useState(false);
+
+  const handleRecovery = async () => {
+    const api = getAPI();
+    if (!api) return;
+    if (!recUsername.trim() || !recCode.trim() || !recPassword) {
+      toast.error('All fields are required');
+      return;
+    }
+    if (recPassword !== recConfirm) {
+      toast.error('Passwords do not match');
+      return;
+    }
+    setRecovering(true);
+    try {
+      const result = await api.recoveryReset(recUsername.trim(), recCode.trim(), recPassword);
+      if (result.success) {
+        toast.success('Password reset — you can sign in with your new password. The code has been used up.');
+        setRecoveryOpen(false);
+        setUsername(recUsername.trim());
+        setPassword('');
+        setRecUsername(''); setRecCode(''); setRecPassword(''); setRecConfirm('');
+      } else {
+        toast.error(result.error || 'Recovery failed');
+      }
+    } finally {
+      setRecovering(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !password) {
@@ -150,6 +186,14 @@ export default function LoginPage() {
             </Button>
           </form>
 
+          <button
+            type="button"
+            onClick={() => setRecoveryOpen(true)}
+            className="mt-3 block w-full text-center text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            Forgot password?
+          </button>
+
           {/* Bottom credit on mobile */}
           <div className="lg:hidden mt-10 text-center">
             <p className="text-[10px] text-muted-foreground/50 uppercase tracking-widest">Developed by</p>
@@ -161,6 +205,48 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      {/* Forgot Password — recovery code dialog */}
+      <Dialog open={recoveryOpen} onOpenChange={(open) => { if (!recovering) setRecoveryOpen(open); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Reset Password with a Recovery Code</DialogTitle>
+            <DialogDescription>
+              Use one of the printed recovery codes kept by the barangay. Each code works once.
+              No codes? An admin can generate them in Settings → User Management.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Username of the account to reset</Label>
+              <Input value={recUsername} onChange={(e) => setRecUsername(e.target.value)} placeholder="e.g., admin" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Recovery Code</Label>
+              <Input
+                value={recCode}
+                onChange={(e) => setRecCode(e.target.value.toUpperCase())}
+                placeholder="XXXXX-XXXXX"
+                className="font-mono tracking-widest"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">New Password</Label>
+              <Input type="password" value={recPassword} onChange={(e) => setRecPassword(e.target.value)} placeholder="At least 6 characters" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Confirm New Password</Label>
+              <Input type="password" value={recConfirm} onChange={(e) => setRecConfirm(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecoveryOpen(false)} disabled={recovering}>Cancel</Button>
+            <Button onClick={handleRecovery} disabled={recovering}>
+              {recovering ? 'Resetting...' : 'Reset Password'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Forced Password Change Dialog */}
       <Dialog open={showPasswordChange} onOpenChange={() => {}}>

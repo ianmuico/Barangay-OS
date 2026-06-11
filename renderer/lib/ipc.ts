@@ -40,6 +40,8 @@ export interface Resident {
   philsys_card_no: string | null;
   educational_attainment: string | null;
   is_4ps: number;
+  is_pwd?: number;
+  pwd_note?: string | null;
   status: string;
   death_date?: string | null;
   resident_uid?: string | null;
@@ -77,6 +79,8 @@ export interface ResidentData {
   philsys_card_no?: string | null;
   educational_attainment?: string | null;
   is_4ps?: number;
+  is_pwd?: number;
+  pwd_note?: string | null;
   status?: string;
   death_date?: string | null;
 }
@@ -91,6 +95,7 @@ export interface ResidentListParams {
   is_senior?: boolean;
   is_youth?: boolean;
   is_4ps?: boolean;
+  is_pwd?: boolean;
   gender?: string;
   status?: string; // 'living' | 'deceased' | 'all'
 }
@@ -175,6 +180,7 @@ export interface DashboardStats {
   totalIndigents: number;
   totalYouth: number;
   total4Ps: number;
+  totalPWD?: number;
 }
 
 export interface ImportResult {
@@ -405,6 +411,9 @@ export interface UserUpdateData {
 export interface ElectronAPI {
   login: (username: string, password: string) => Promise<{ success: boolean; user?: User; error?: string }>;
   logout: () => Promise<{ success: boolean }>;
+  generateRecoveryCodes: () => Promise<{ success: boolean; codes?: string[]; error?: string }>;
+  getRecoveryStatus: () => Promise<{ remaining: number }>;
+  recoveryReset: (username: string, code: string, newPassword: string) => Promise<{ success: boolean; remaining?: number; error?: string }>;
   getCurrentUser: () => Promise<User | null>;
 
   getResidents: (params: ResidentListParams) => Promise<PaginatedResult<Resident>>;

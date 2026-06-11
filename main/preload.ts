@@ -12,6 +12,7 @@ interface ResidentListParams {
   is_indigent?: boolean;
   is_senior?: boolean;
   is_youth?: boolean;
+  is_pwd?: boolean;
   gender?: string;
 }
 
@@ -42,6 +43,8 @@ interface ResidentData {
   philsys_card_no?: string | null;
   educational_attainment?: string | null;
   is_4ps?: number;
+  is_pwd?: number;
+  pwd_note?: string | null;
   status?: string;
 }
 
@@ -124,6 +127,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('auth:login', username, password),
   logout: () => ipcRenderer.invoke('auth:logout'),
   getCurrentUser: () => ipcRenderer.invoke('auth:getCurrentUser'),
+  generateRecoveryCodes: () => ipcRenderer.invoke('auth:generateRecoveryCodes'),
+  getRecoveryStatus: () => ipcRenderer.invoke('auth:recoveryStatus'),
+  recoveryReset: (username: string, code: string, newPassword: string) =>
+    ipcRenderer.invoke('auth:recoveryReset', username, code, newPassword),
 
   // Residents
   getResidents: (params: ResidentListParams) => ipcRenderer.invoke('db:residents:list', params),

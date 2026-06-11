@@ -20,6 +20,7 @@ statsRouter.get('/stats', (_req, res) => {
       youth: count("SELECT COUNT(*) n FROM residents WHERE status != 'deceased' AND birth_date <= date('now', '-15 years') AND birth_date > date('now', '-31 years')"),
       indigents: count("SELECT COUNT(*) n FROM residents WHERE status != 'deceased' AND is_indigent = 1"),
       fourPs: count("SELECT COUNT(*) n FROM residents WHERE status != 'deceased' AND is_4ps = 1"),
+      pwd: count("SELECT COUNT(*) n FROM residents WHERE status != 'deceased' AND is_pwd = 1"),
       deceased: count("SELECT COUNT(*) n FROM residents WHERE status = 'deceased'"),
       male: count("SELECT COUNT(*) n FROM residents WHERE status != 'deceased' AND LOWER(gender) = 'male'"),
       female: count("SELECT COUNT(*) n FROM residents WHERE status != 'deceased' AND LOWER(gender) = 'female'"),

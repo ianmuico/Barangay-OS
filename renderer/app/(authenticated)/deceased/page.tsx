@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { CategoryResidentsPage, type CategoryConfig } from '@/components/category-residents-page';
+import { DECEASED_GROUP_OPTIONS } from '@/components/category-print-dialog';
 
 // Keywords that flag templates as clearly case/complaint-related (exclude from deceased page)
 const CASE_TEMPLATE_KEYWORDS = ['summon', 'sumbong', 'pagtawag', 'minutas', 'complaint', 'mediation'];
@@ -14,6 +15,10 @@ export default function DeceasedPage() {
     searchPlaceholder: 'Search deceased records...',
     filterParams: { status: 'deceased' },
     showExport: true,
+    printConfig: {
+      groupOptions: DECEASED_GROUP_OPTIONS,
+      extraColumns: [{ key: 'death_date', label: 'Date of Death' }],
+    },
     extraColumns: [
       {
         accessorKey: 'middle_name',

@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, UserCheck, HeartHandshake, Baby,
   GitBranch, FileSearch, FileText, Landmark,
   Settings, Building2, Shield, Database, Wifi, Info,
-  ChevronDown, Loader2, Heart, Archive, Scale, Bell, FolderOpen, Flag, Store, UserPlus,
+  ChevronDown, Loader2, Heart, Archive, Scale, Bell, FolderOpen, Flag, Store, UserPlus, Accessibility,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -50,6 +50,7 @@ const navGroups: NavGroup[] = [
       { href: '/indigents', label: 'Indigents', icon: HeartHandshake },
       { href: '/youth', label: 'Youth', icon: Baby },
       { href: '/four-ps', label: '4Ps Beneficiaries', icon: Heart },
+      { href: '/pwd', label: 'PWD', icon: Accessibility },
       { href: '/family-tree', label: 'Family Tree', icon: GitBranch },
       { href: '/deceased', label: 'Deceased', icon: Archive },
       { href: '/flagged', label: 'Flagged Residents', icon: Flag },

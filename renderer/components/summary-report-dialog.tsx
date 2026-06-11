@@ -164,6 +164,10 @@ function buildReportHTML(data: ReportData): string {
             <td style="padding: 3px 8px; font-weight: bold; text-align: right;">${stats.total4Ps}</td>
           </tr>
           <tr>
+            <td style="padding: 3px 8px;">Persons with Disability (PWD)</td>
+            <td style="padding: 3px 8px; font-weight: bold; text-align: right;">${stats.totalPWD ?? 0}</td>
+          </tr>
+          <tr>
             <td style="padding: 3px 8px;">Registered Voters</td>
             <td style="padding: 3px 8px; font-weight: bold; text-align: right;">${totalVoters}${stats.totalResidents > 0 ? ` (${Math.round((totalVoters / stats.totalResidents) * 100)}%)` : ''}</td>
           </tr>

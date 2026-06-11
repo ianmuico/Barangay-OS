@@ -145,7 +145,7 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
     first_name: '', middle_name: '', last_name: '', suffix: '',
     birth_date: '', gender: 'Male', civil_status: 'Single',
     address: '', purok: '', contact_number: '', email: '',
-    occupation: '', is_indigent: false, voter_status: 'Not Registered',
+    occupation: '', is_indigent: false, is_pwd: false, pwd_note: '', voter_status: 'Not Registered',
     blood_type: '', notes: '',
     partner_id: null as number | null,
     mother_id: null as number | null,
@@ -195,6 +195,8 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
         philsys_card_no: resident?.philsys_card_no || '',
         educational_attainment: resident?.educational_attainment || '',
         is_4ps: resident?.is_4ps === 1,
+        is_pwd: resident?.is_pwd === 1,
+        pwd_note: resident?.pwd_note || '',
         status: resident?.status || 'living',
         death_date: resident?.death_date || '',
       });
@@ -272,6 +274,8 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
         ...formData,
         is_indigent: formData.is_indigent ? 1 : 0,
         is_4ps: formData.is_4ps ? 1 : 0,
+        is_pwd: formData.is_pwd ? 1 : 0,
+        pwd_note: formData.is_pwd ? (formData.pwd_note || null) : null,
       });
       onClose();
     } finally {
@@ -714,7 +718,27 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
                 />
                 <Label htmlFor="is_4ps" className="text-sm">4Ps Beneficiary</Label>
               </div>
+              <div className="flex items-center space-x-3">
+                <Switch
+                  id="is_pwd"
+                  checked={formData.is_pwd}
+                  onCheckedChange={(checked) => handleChange('is_pwd', checked)}
+                />
+                <Label htmlFor="is_pwd" className="text-sm">PWD</Label>
+              </div>
             </div>
+
+            {/* ── PWD note (shown only when PWD is on) ── */}
+            {formData.is_pwd && (
+              <div className="space-y-1">
+                <Label className="text-xs">PWD Note <span className="text-muted-foreground">(type of disability / details)</span></Label>
+                <Input
+                  value={formData.pwd_note}
+                  onChange={(e) => handleChange('pwd_note', e.target.value)}
+                  placeholder="e.g., Visual impairment, PWD ID #12345"
+                />
+              </div>
+            )}
 
             {/* ── Notes ── */}
             <div className="space-y-1">

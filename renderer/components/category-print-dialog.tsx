@@ -62,6 +62,12 @@ export function CategoryPrintDialog({
   extraColumns,
 }: CategoryPrintDialogProps) {
   const [groupBy, setGroupBy] = useState(groupOptions[0]?.value || 'alphabetical');
+  const [thenBy, setThenBy] = useState('none'); // optional second-level grouping
+
+  const handleGroupByChange = (value: string) => {
+    setGroupBy(value);
+    if (value === thenBy) setThenBy('none');
+  };
   const [listHeaders, setListHeaders] = useState<ListHeader[]>([]);
   const [selectedHeaderId, setSelectedHeaderId] = useState<string>('default');
   const [activeMode, setActiveMode] = useState<'download' | 'print' | null>(null);
@@ -109,28 +115,43 @@ export function CategoryPrintDialog({
         ? [...BASE_COLUMNS, ...extraColumns]
         : BASE_COLUMNS;
 
-      // Find the selected group option
+      // Find the selected group options (primary + optional secondary)
       const selectedGroup = groupOptions.find(g => g.value === groupBy);
       if (!selectedGroup) return;
+      const secondaryGroup = thenBy !== 'none' ? groupOptions.find(g => g.value === thenBy) : undefined;
 
-      // Group the residents
-      const groups = new Map<string, Resident[]>();
+      // Group: primary key, then optional secondary key within it
+      const cmp = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+      const groups = new Map<string, Map<string, Resident[]>>();
       for (const r of result.data) {
-        const key = selectedGroup.groupBy(r);
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key)!.push(r);
+        const pKey = selectedGroup.groupBy(r);
+        const sKey = secondaryGroup ? secondaryGroup.groupBy(r) : '';
+        if (!groups.has(pKey)) groups.set(pKey, new Map());
+        const inner = groups.get(pKey)!;
+        if (!inner.has(sKey)) inner.set(sKey, []);
+        inner.get(sKey)!.push(r);
       }
 
-      // Sort group keys
-      let sortedKeys = Array.from(groups.keys());
-      if (selectedGroup.sortGroups !== false) {
-        sortedKeys.sort((a, b) => a.localeCompare(b));
+      // Flatten in hierarchical order: primary sorted, then secondary sorted
+      const flat: { groupLabel: string; residents: Resident[] }[] = [];
+      const primaryKeys = Array.from(groups.keys());
+      if (selectedGroup.sortGroups !== false) primaryKeys.sort(cmp);
+      for (const pKey of primaryKeys) {
+        const inner = groups.get(pKey)!;
+        const secondaryKeys = Array.from(inner.keys()).sort(cmp);
+        for (const sKey of secondaryKeys) {
+          flat.push({
+            groupLabel: secondaryGroup ? `${pKey} — ${sKey}` : pKey,
+            residents: inner.get(sKey)!,
+          });
+        }
       }
+      const sortedKeys = flat.map(f => f.groupLabel);
 
       // Build grouped data
-      const groupedData = sortedKeys.map(key => ({
-        groupLabel: key,
-        rows: groups.get(key)!.map(r => ({
+      const groupedData = flat.map(({ groupLabel, residents }) => ({
+        groupLabel,
+        rows: residents.map(r => ({
           last_name: r.last_name || '',
           first_name: r.first_name || '',
           middle_name: r.middle_name || '-',
@@ -141,6 +162,9 @@ export function CategoryPrintDialog({
           contact_number: r.contact_number || '-',
           occupation: r.occupation || '-',
           is_indigent: r.is_indigent ? 'Yes' : 'No',
+          is_pwd: (r as any).is_pwd ? 'Yes' : 'No',
+          pwd_note: (r as any).pwd_note || '-',
+          death_date: (r as any).death_date || '-',
         })),
       }));
 
@@ -156,7 +180,7 @@ export function CategoryPrintDialog({
         groups: groupedData,
         columns,
         title,
-        groupByLabel: selectedGroup.label,
+        groupByLabel: secondaryGroup ? `${selectedGroup.label} + ${secondaryGroup.label}` : selectedGroup.label,
         mode,
       });
 
@@ -192,7 +216,7 @@ export function CategoryPrintDialog({
         <div className="space-y-4">
           <div className="space-y-2">
             <Label>Group By</Label>
-            <Select value={groupBy} onValueChange={setGroupBy}>
+            <Select value={groupBy} onValueChange={handleGroupByChange}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {groupOptions.map(opt => (
@@ -202,6 +226,22 @@ export function CategoryPrintDialog({
             </Select>
             <p className="text-[10px] text-muted-foreground">
               Each group will be printed on a separate page with its own header and row numbering.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Then Group By <span className="font-normal text-muted-foreground">(optional)</span></Label>
+            <Select value={thenBy} onValueChange={setThenBy}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {groupOptions.filter(opt => opt.value !== groupBy).map(opt => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground">
+              Combine groupings — e.g. By Purok + By Gender prints "Purok 1 — Female", "Purok 1 — Male", and so on.
             </p>
           </div>
 
@@ -347,3 +387,57 @@ export const YOUTH_GROUP_OPTIONS: GroupOption[] = [
     },
   },
 ];
+
+
+const baseAlpha: GroupOption = {
+  value: 'alphabetical',
+  label: 'Alphabetical (A-Z)',
+  groupBy: (r) => (r.last_name?.[0] || '#').toUpperCase(),
+};
+const basePurok: GroupOption = {
+  value: 'purok',
+  label: 'By Purok',
+  groupBy: (r) => r.purok ? `Purok ${r.purok}` : 'No Purok Assigned',
+};
+const baseGender: GroupOption = {
+  value: 'gender',
+  label: 'By Gender',
+  groupBy: (r) => r.gender || 'Unspecified',
+};
+const baseCivil: GroupOption = {
+  value: 'civil_status',
+  label: 'By Civil Status',
+  groupBy: (r) => r.civil_status || 'Unspecified',
+};
+const baseAge: GroupOption = {
+  value: 'age_bracket',
+  label: 'By Age Bracket',
+  groupBy: (r) => {
+    const age = (r as any).age ?? 0;
+    if (age >= 60) return 'Senior (60+)';
+    if (age >= 30) return 'Adult (30-59)';
+    if (age >= 15) return 'Youth (15-29)';
+    return 'Child (below 15)';
+  },
+};
+
+export const ALL_RESIDENTS_GROUP_OPTIONS: GroupOption[] = [
+  baseAlpha, basePurok, baseGender, baseAge, baseCivil,
+  { value: 'voter', label: 'By Voter Status', groupBy: (r) => r.voter_status || 'Unspecified' },
+];
+
+export const FOURPS_GROUP_OPTIONS: GroupOption[] = [baseAlpha, basePurok, baseGender, baseCivil];
+
+export const DECEASED_GROUP_OPTIONS: GroupOption[] = [
+  baseAlpha, basePurok, baseGender,
+  {
+    value: 'death_year',
+    label: 'By Year of Death',
+    groupBy: (r) => {
+      const d = (r as any).death_date;
+      return d ? String(new Date(d).getFullYear()) : 'No Date Recorded';
+    },
+  },
+];
+
+export const PWD_GROUP_OPTIONS: GroupOption[] = [baseAlpha, basePurok, baseGender, baseAge];

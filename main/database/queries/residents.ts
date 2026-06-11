@@ -112,6 +112,10 @@ export function listResidents(params: ResidentQueryParams = {}): PaginatedResult
     conditions.push('is_4ps = 1');
   }
 
+  if ((params as any).is_pwd) {
+    conditions.push('is_pwd = 1');
+  }
+
   if (is_senior) {
     conditions.push("(CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER)) >= 60");
   }
@@ -167,6 +171,11 @@ export function getResidentById(id: number): (Resident & { age: number }) | unde
   `).get(id) as (Resident & { age: number }) | undefined;
 }
 
+export function getPwdCount(): number {
+  const db = getDb();
+  return (db.prepare("SELECT COUNT(*) as n FROM residents WHERE status != 'deceased' AND is_pwd = 1").get() as { n: number }).n;
+}
+
 export function getResidentByUid(uid: string): (Resident & { age: number }) | undefined {
   const db = getDb();
   return db.prepare(`
@@ -219,8 +228,8 @@ export function createResident(data: Partial<Resident> & { first_name: string; l
       is_indigent, voter_status, blood_type, photo_path, household_id,
       partner_id, mother_id, father_id, notes,
       religion, citizenship, philsys_card_no, educational_attainment,
-      is_4ps, status, import_batch_id, resident_uid
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_4ps, status, import_batch_id, resident_uid, is_pwd, pwd_note
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.first_name, data.middle_name || null, data.last_name, data.suffix || null,
     data.birth_date, data.gender, data.civil_status, data.address || '',
@@ -230,7 +239,7 @@ export function createResident(data: Partial<Resident> & { first_name: string; l
     data.mother_id || null, data.father_id || null, data.notes || null,
     data.religion || null, data.citizenship || 'Filipino', data.philsys_card_no || null,
     data.educational_attainment || null, data.is_4ps || 0, data.status || 'living',
-    data.import_batch_id || null, uuidv4()
+    data.import_batch_id || null, uuidv4(), (data as any).is_pwd || 0, (data as any).pwd_note || null
   );
   const newId = result.lastInsertRowid as number;
 
@@ -268,7 +277,7 @@ export function updateResident(id: number, data: Partial<Resident>): void {
     'occupation', 'is_indigent', 'voter_status', 'blood_type',
     'photo_path', 'household_id', 'partner_id', 'mother_id', 'father_id', 'notes',
     'religion', 'citizenship', 'philsys_card_no', 'educational_attainment',
-    'is_4ps', 'status', 'import_batch_id', 'death_date'
+    'is_4ps', 'status', 'import_batch_id', 'death_date', 'is_pwd', 'pwd_note'
   ];
 
   for (const [key, value] of Object.entries(data)) {

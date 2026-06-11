@@ -10,7 +10,7 @@ import { TableSkeleton } from '@/components/skeletons';
 import { ResidentForm } from '@/components/resident-form';
 import { ReportGenerateDialog } from '@/components/report-generate-dialog';
 import { ResidentDetailDialog } from '@/components/resident-detail-dialog';
-import { PrintListDialog } from '@/components/print-list-dialog';
+import { CategoryPrintDialog, ALL_RESIDENTS_GROUP_OPTIONS } from '@/components/category-print-dialog';
 import { PageHeader } from '@/components/page-header';
 import { usePageSearch } from '@/hooks/use-page-search';
 import {
@@ -289,7 +289,13 @@ export default function ResidentsPage() {
 
       <ResidentDetailDialog residentId={detailId} open={detailOpen} onOpenChange={setDetailOpen} />
 
-      <PrintListDialog open={printListOpen} onClose={() => setPrintListOpen(false)} />
+      <CategoryPrintDialog
+        open={printListOpen}
+        onClose={() => setPrintListOpen(false)}
+        title="All Residents"
+        filterParams={{}}
+        groupOptions={ALL_RESIDENTS_GROUP_OPTIONS}
+      />
 
       <CSVImportDialog
         open={importOpen}

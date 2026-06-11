@@ -172,6 +172,7 @@ export function ResidentDetailDialog({ residentId, open, onOpenChange, initialTa
     { label: 'Senior Citizen', show: (age ?? 0) >= 60 && resident.status !== 'deceased' },
     { label: 'Indigent', show: !!resident.is_indigent },
     { label: '4Ps', show: !!(resident as any).is_4ps },
+    { label: 'PWD', show: !!(resident as any).is_pwd },
     { label: 'Registered Voter', show: (resident.voter_status || '').toLowerCase() === 'registered' },
   ] : [];
   const openIssueCount = issues.filter(i => i.status === 'open').length;
@@ -237,6 +238,7 @@ export function ResidentDetailDialog({ residentId, open, onOpenChange, initialTa
                     <Field label="Blood Type" value={resident.blood_type} />
                     <Field label="Voter Status" value={resident.voter_status} />
                     <Field label="PhilSys Card No." value={(resident as any).philsys_card_no} />
+                    {!!(resident as any).is_pwd && <Field label="PWD Note" value={(resident as any).pwd_note} />}
                     {resident.status === 'deceased' && (
                       <Field label="Date of Death" value={(resident as any).death_date ? new Date((resident as any).death_date).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : null} />
                     )}

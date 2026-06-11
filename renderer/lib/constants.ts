@@ -80,6 +80,7 @@ export const TEMPLATE_PAGES = [
   { key: 'indigents', label: 'Indigents' },
   { key: 'youth', label: 'Youth' },
   { key: 'four-ps', label: '4Ps Beneficiaries' },
+  { key: 'pwd', label: 'PWD' },
   { key: 'deceased', label: 'Deceased' },
   { key: 'flagged', label: 'Flagged Residents' },
   { key: 'generator', label: 'Generator' },
