@@ -844,6 +844,29 @@ export default function CasesPage() {
     setResolveDialogOpen(true);
   };
 
+  // Direct status change from the detail dialog — covers pending → ongoing
+  // and reopening a resolved/dismissed case. Closing statuses stamp the
+  // resolved date; reopening clears it (resolution notes are kept).
+  const handleStatusChange = async (newStatus: string) => {
+    if (!api || !detailCase || newStatus === detailCase.status) return;
+    const data: Record<string, unknown> = { status: newStatus };
+    if (newStatus === 'resolved' || newStatus === 'dismissed') {
+      data.resolved_date = detailCase.resolved_date || new Date().toISOString().split('T')[0];
+    } else {
+      data.resolved_date = null;
+    }
+    try {
+      await api.updateCase(detailCase.id, data);
+      const refreshed = await api.getCase(detailCase.id);
+      if (refreshed) setDetailCase(refreshed);
+      invalidateCache('cases');
+      fetchCases();
+      toast.success(`Case status changed to ${newStatus}`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to change status');
+    }
+  };
+
   const handleResolve = async () => {
     if (!api || !detailCase) return;
     setSaving(true);
@@ -1240,6 +1263,23 @@ export default function CasesPage() {
                   </div>
                 )}
 
+                {/* Status — directly changeable, including reopening closed cases */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Status</span>
+                  <Select value={detailCase.status} onValueChange={handleStatusChange}>
+                    <SelectTrigger className="h-8 w-[150px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="ongoing">Ongoing</SelectItem>
+                      <SelectItem value="resolved">Resolved</SelectItem>
+                      <SelectItem value="dismissed">Dismissed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {(detailCase.status === 'resolved' || detailCase.status === 'dismissed') && (
+                    <span className="text-[11px] text-muted-foreground">Switch back to Pending/Ongoing to reopen the case.</span>
+                  )}
+                </div>
+
                 {/* Action buttons */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <Button variant="outline" size="sm" onClick={handleViewCaseDocument}>
@@ -1254,19 +1294,17 @@ export default function CasesPage() {
                     <FilePlus2 className="mr-2 h-3.5 w-3.5" />
                     Custom Document
                   </Button>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    openEditCase(detailCase);
+                  }}>
+                    <Pencil className="mr-2 h-3.5 w-3.5" />
+                    Edit Case
+                  </Button>
                   {(detailCase.status === 'pending' || detailCase.status === 'ongoing') && (
-                    <>
-                      <Button variant="outline" size="sm" onClick={() => {
-                        openEditCase(detailCase);
-                      }}>
-                        <Pencil className="mr-2 h-3.5 w-3.5" />
-                        Edit Case
-                      </Button>
-                      <Button size="sm" onClick={openResolve} className="bg-green-600 hover:bg-green-700 text-white">
-                        <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
-                        Resolve / Dismiss
-                      </Button>
-                    </>
+                    <Button size="sm" onClick={openResolve} className="bg-green-600 hover:bg-green-700 text-white">
+                      <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
+                      Resolve / Dismiss
+                    </Button>
                   )}
                 </div>
 
