@@ -1,10 +1,21 @@
 # Releasing Updates Over the Internet
 
+> **Easiest path (recommended): push a version tag and let GitHub build both
+> Windows and Mac for you.** See [UPDATING.md](UPDATING.md) — the automated
+> workflow in `.github/workflows/release.yml` needs no personal token and no local
+> build. The manual steps below (§2) are the fallback for building on your own
+> machine, and §3 (database safety) applies to **every** release either way.
+
 How to ship a new version of the Barangay Management System to barangays that
 already have it installed — safely, for free, using GitHub Releases. Installed
 apps check GitHub on startup, ask the user to update, download in the
 background, and install on restart. **The barangay's database is never touched
 by an update** — it lives in the app data folder, outside the installed app.
+
+**Windows** gets full silent auto-update. **Mac** (built unsigned, to stay free)
+notifies the user and opens the download page — installing the new `.dmg` over the
+old app keeps all data, since the database lives outside the app. Silent Mac
+auto-update would require a paid Apple Developer ID.
 
 ---
 
@@ -45,6 +56,9 @@ Install Node.js 20 LTS, then in the project folder: `npm install`
 # 1. Bump the version in package.json — THIS IS WHAT TRIGGERS THE UPDATE.
 #    "version": "1.4.0"  ->  "1.5.0"
 #    Installed apps update only when the release version is HIGHER than theirs.
+
+# 1b. Update CHANGELOG.md — move the [Unreleased] notes under a new
+#     "## [1.5.0] - YYYY-MM-DD" heading so every shipped version is tracked.
 
 # 2. Run the pre-release safety checklist (see §3). Seriously.
 
@@ -96,6 +110,7 @@ migration system handles this automatically **if you follow these rules**:
 
 ### Pre-release checklist
 - [ ] Version bumped in `package.json`
+- [ ] `CHANGELOG.md` updated — [Unreleased] notes moved under the new version + date
 - [ ] New migrations are additive and appended at the end of the list
 - [ ] **Upgrade test**: install the PREVIOUS release in a Windows VM, add a few
       residents/cases/templates, then install the new build over it. Confirm:
@@ -149,4 +164,60 @@ First launch of v1.5.0: backs up the DB, applies any new migrations, opens
 
 Relevant code: `main/utils/updater.ts` (update checks + token),
 `main/database/connection.ts` (migrations + auto-backup),
-`package.json` → `"build"` (installer + publish config).
+`electron-builder.yml` (installer + publish config — single source of truth).
+
+---
+
+## 6. Resilience & security on bad internet ⚠️
+
+Barangay internet is often slow or drops out. The update system is built so a bad
+connection can **never** produce a half-installed or corrupted app.
+
+### How the app guarantees a complete, correct update
+
+1. **Checksum verification (built in).** Every release publishes a SHA-512 hash of
+   the installer inside `latest.yml`. After downloading, the app checks the file
+   against that hash. **If even one byte is missing or wrong, the update is
+   rejected and never installed** — the barangay keeps running the current version,
+   untouched. This is the core guarantee that "all the files needed are there."
+2. **Auto-retry / redo on failure.** The download runs in the background while
+   staff keep working. If it fails (dropped Wi-Fi, timeout), the app automatically
+   retries up to 5 times with an increasing delay, re-fetching what's missing
+   until a complete, verified file is ready. The initial update *check* also
+   retries a few times if the connection is flaky at startup.
+3. **Manual retry if it still fails.** After the auto-retries, the app shows
+   *"Update download failed — your internet may be unstable. Nothing was changed.
+   Try again / Later."* Choosing **Try again** restarts the download.
+4. **Atomic install on restart.** The new version is only applied when the app
+   restarts, all at once. There is no in-between state where some files are old
+   and some are new. If the user picks **Later**, the verified update installs the
+   next time they quit the app (`autoInstallOnAppQuit`).
+5. **The database is never touched.** Updates only replace the program files in the
+   install folder. The barangay's data lives in a separate app-data folder, so
+   even a failed or interrupted update cannot harm it (see §3).
+
+**Net effect:** the worst a bad connection can do is *delay* an update. It can
+never break the installed app or its data.
+
+### Security measures
+
+- **Private releases + token.** Only PCs that have your `update-token.txt`
+  (Contents: Read-only, see §1) can download updates. Rotate the token yearly or
+  if a PC is lost — you can revoke it on GitHub without rebuilding the app.
+- **Stable app identity.** The `appId` in `electron-builder.yml` is fixed
+  (`ph.barangay.management`). Never change it, or Windows will treat a new release
+  as a different app and install it alongside the old one instead of upgrading.
+- **Code signing (optional, recommended later).** Installers are currently
+  unsigned, so the *first* manual install shows a Windows SmartScreen warning
+  (More info → Run anyway). Auto-updates are unaffected. A code-signing
+  certificate (paid) removes the warning — Azure Trusted Signing is the cheapest
+  route.
+- **Token expiry watch-out.** When the read-only token expires (you set ~1 year in
+  §1), deployed apps quietly stop receiving updates. Set a calendar reminder to
+  rotate it and redistribute `update-token.txt`.
+
+### Quick test you can do yourself
+
+To confirm resilience before a real rollout: start an update download, then turn
+off Wi-Fi for ~20 seconds and turn it back on. The download should resume/redo and
+finish; the app should still open normally throughout.

@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Users, UserCheck, HeartHandshake, Baby, TrendingUp, FileText, Home, Scale, Vote, Banknote, HeartPulse, CalendarClock } from 'lucide-react';
+import { Users, UserCheck, HeartHandshake, Baby, TrendingUp, FileText, Home, Scale, Vote, Banknote, HeartPulse, CalendarClock, Eye } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { SummaryReportDialog } from '@/components/summary-report-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { DashboardSkeleton } from '@/components/skeletons';
-import { getAPI, type DashboardStats, type DetailedStats, type AuditEntry } from '@/lib/ipc';
+import { getAPI, type DashboardStats, type DetailedStats, type AuditEntry, type PresenceEntry } from '@/lib/ipc';
 import { cachedFetch } from '@/lib/cache';
 import { EmptyState } from '@/components/empty-state';
 import { useTranslation } from 'react-i18next';
@@ -97,6 +97,7 @@ export default function DashboardPage() {
   const [chartView, setChartView] = useState<ChartView>('overview');
   const [subFilter, setSubFilter] = useState<SubFilter>('age');
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [presence, setPresence] = useState<PresenceEntry[]>([]);
 
   useEffect(() => {
     const api = getAPI();
@@ -105,6 +106,12 @@ export default function DashboardPage() {
     cachedFetch('dashboard:detailed', () => api.getDetailedStats()).then(setDetailed);
     cachedFetch('dashboard:activities', () => api.getAuditLog(50)).then(setActivities);
     api.getSetting('barangay_name').then((v) => setBarangayName(v || 'Barangay'));
+
+    // Live "who's working on what" — poll every 8s
+    const pollPresence = () => { (api as any).presenceList?.().then((p: PresenceEntry[]) => setPresence(p || [])).catch(() => {}); };
+    pollPresence();
+    const presenceTimer = setInterval(pollPresence, 8000);
+    return () => clearInterval(presenceTimer);
   }, []);
 
   // Compute chart data based on active view/filter
@@ -260,6 +267,24 @@ export default function DashboardPage() {
           );
         })}
       </div>
+
+      {/* Live activity — who is adding/editing records right now */}
+      {presence.length > 0 && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 dark:border-blue-900 dark:bg-blue-950/30">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+            <Eye className="h-3.5 w-3.5" /> Active now
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {presence.map((p) => (
+              <span key={p.sessionId} className="text-foreground">
+                <span className="font-medium">{p.who}</span>
+                <span className="text-muted-foreground"> is {p.action} </span>
+                <span className="font-medium">{p.label || `${p.entity} #${p.id}`}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Secondary stats — quick links to other modules */}
       {detailed && (

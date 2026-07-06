@@ -21,6 +21,9 @@ import { TemplateEditor } from '@/components/template-editor';
 import { getAPI, type ReportTemplate } from '@/lib/ipc';
 import { parsePaperJson } from '@/lib/paper';
 import { PaperPreview } from '@/components/paper-preview';
+import { TemplateThumbnail } from '@/components/template-thumbnail';
+import { type PreviewContext } from '@/components/document-editor/serialize';
+import { type Official } from '@/lib/ipc';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/empty-state';
 import { useTranslation } from 'react-i18next';
@@ -46,6 +49,7 @@ export default function TemplatesPage() {
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [previewTemplate, setPreviewTemplate] = useState<ReportTemplate | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [previewCtx, setPreviewCtx] = useState<PreviewContext | null>(null);
 
   // ─── List Header Templates ───
   const [listHeaders, setListHeaders] = useState<ListHeader[]>([]);
@@ -81,6 +85,26 @@ export default function TemplatesPage() {
   };
 
   useEffect(() => { fetchTemplates(); fetchListHeaders(); }, []);
+
+  // Load the preview context once so every card thumbnail renders the real
+  // letterhead + sample data without N× IPC calls.
+  useEffect(() => {
+    const api = getAPI();
+    if (!api) return;
+    (async () => {
+      const [barangay, barangayAddress, municipality, province, headerTemplate, logo, officials] = await Promise.all([
+        api.getSetting('barangay_name'), api.getSetting('barangay_address'),
+        api.getSetting('municipality'), api.getSetting('province'),
+        api.getSetting('header_template'), api.getLogoBase64(),
+        api.getOfficials().then((l: Official[]) => l.filter(o => o.is_active)).catch(() => [] as Official[]),
+      ]);
+      setPreviewCtx({
+        barangay: barangay || '', barangayAddress: barangayAddress || '',
+        municipality: municipality || '', province: province || '',
+        headerTemplate: headerTemplate || null, logoDataUrl: logo, officials,
+      });
+    })();
+  }, []);
 
   // Handle ?edit=<id> from generator page — opens the full document editor
   useEffect(() => {
@@ -166,8 +190,6 @@ export default function TemplatesPage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {templates.map((t) => {
-                const vars = t.variables_json ? JSON.parse(t.variables_json) : [];
-                const previewText = stripHtml(t.content_html).slice(0, 120);
                 return (
                   <Card key={t.id} className="group relative overflow-hidden">
                     <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
@@ -185,16 +207,14 @@ export default function TemplatesPage() {
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="mb-3 rounded border bg-white dark:bg-zinc-900 p-3 text-xs text-muted-foreground leading-relaxed h-20 overflow-hidden relative">
-                        <p className="line-clamp-4">{previewText || 'Empty template'}</p>
-                        <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white dark:from-zinc-900 to-transparent" />
-                      </div>
-                      {vars.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {vars.slice(0, 5).map((v: string) => (<Badge key={v} variant="outline" className="text-[10px] px-1.5 py-0">{`{{${v}}}`}</Badge>))}
-                          {vars.length > 5 && <Badge variant="outline" className="text-[10px] px-1.5 py-0">+{vars.length - 5}</Badge>}
-                        </div>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => openEdit(t)}
+                        className="block w-full text-left"
+                        title="Edit template"
+                      >
+                        <TemplateThumbnail html={t.content_html} paper={parsePaperJson(t.paper_json)} ctx={previewCtx} />
+                      </button>
                     </CardContent>
                   </Card>
                 );

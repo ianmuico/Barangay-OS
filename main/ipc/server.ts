@@ -5,6 +5,7 @@ import { createExpressApp } from '../server/index';
 import { getSetting } from '../database/queries/settings';
 import { logAudit } from '../database/queries/audit';
 import { getCurrentSessionUser } from './auth';
+import { getTunnelState, startTunnel, stopTunnel } from '../utils/tunnel';
 
 let httpServer: http.Server | null = null;
 
@@ -58,6 +59,8 @@ export function registerServerHandlers(): void {
       return { success: false, error: 'Server is not running' };
     }
 
+    stopTunnel(); // no server → nothing for the tunnel to forward to
+
     return new Promise((resolve) => {
       httpServer!.close(() => {
         httpServer = null;
@@ -67,6 +70,27 @@ export function registerServerHandlers(): void {
       });
     });
   });
+
+  // ─── Internet access (Cloudflare quick tunnel) ───
+  ipcMain.handle('tunnel:start', async () => {
+    if (!httpServer) return { status: 'error', url: null, error: 'Start the Online Mode server first.' };
+    const addr = httpServer.address() as any;
+    const result = await startTunnel(addr?.port || parseInt(getSetting('api_port') || '3001', 10));
+    if (result.status === 'running') {
+      const user = getCurrentSessionUser();
+      logAudit(user?.id || null, 'TUNNEL_STARTED', `Internet access enabled: ${result.url}`);
+    }
+    return result;
+  });
+
+  ipcMain.handle('tunnel:stop', async () => {
+    const result = stopTunnel();
+    const user = getCurrentSessionUser();
+    logAudit(user?.id || null, 'TUNNEL_STOPPED', 'Internet access disabled');
+    return result;
+  });
+
+  ipcMain.handle('tunnel:status', async () => getTunnelState());
 
   // Self-test: call our own API the way an external app would, so the admin
   // can confirm the key and endpoints work without leaving the app.

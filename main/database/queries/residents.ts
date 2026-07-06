@@ -228,8 +228,8 @@ export function createResident(data: Partial<Resident> & { first_name: string; l
       is_indigent, voter_status, blood_type, photo_path, household_id,
       partner_id, mother_id, father_id, notes,
       religion, citizenship, philsys_card_no, educational_attainment,
-      is_4ps, status, import_batch_id, resident_uid, is_pwd, pwd_note
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_4ps, status, import_batch_id, resident_uid, is_pwd, pwd_note, created_via, created_by_client
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.first_name, data.middle_name || null, data.last_name, data.suffix || null,
     data.birth_date, data.gender, data.civil_status, data.address || '',
@@ -239,7 +239,8 @@ export function createResident(data: Partial<Resident> & { first_name: string; l
     data.mother_id || null, data.father_id || null, data.notes || null,
     data.religion || null, data.citizenship || 'Filipino', data.philsys_card_no || null,
     data.educational_attainment || null, data.is_4ps || 0, data.status || 'living',
-    data.import_batch_id || null, uuidv4(), (data as any).is_pwd || 0, (data as any).pwd_note || null
+    data.import_batch_id || null, uuidv4(), (data as any).is_pwd || 0, (data as any).pwd_note || null,
+    (data as any).created_via || 'desktop', (data as any).created_by_client ?? null
   );
   const newId = result.lastInsertRowid as number;
 
@@ -266,7 +267,16 @@ export function unlinkPartner(residentId: number): void {
   db.prepare("UPDATE residents SET partner_id = NULL, updated_at = datetime('now') WHERE id = ?").run(residentId);
 }
 
-export function updateResident(id: number, data: Partial<Resident>): void {
+export interface UpdateResult {
+  success: boolean;
+  conflict?: boolean;     // another write changed the row since it was read
+  notFound?: boolean;
+  current?: any;          // latest row when there's a conflict
+}
+
+// Pass expectedVersion to enforce optimistic concurrency: the update only
+// applies if the row hasn't changed since the caller read it.
+export function updateResident(id: number, data: Partial<Resident>, expectedVersion?: number): UpdateResult {
   const db = getDb();
   const fields: string[] = [];
   const values: (string | number | null)[] = [];
@@ -287,9 +297,20 @@ export function updateResident(id: number, data: Partial<Resident>): void {
     }
   }
 
-  if (fields.length === 0) return;
+  // Optimistic concurrency: if the caller read a specific version, only proceed
+  // when the row still has that version (catches concurrent edits / edit-after-delete).
+  if (expectedVersion !== undefined) {
+    const row = db.prepare('SELECT row_version FROM residents WHERE id = ?').get(id) as { row_version: number } | undefined;
+    if (!row) return { success: false, notFound: true };
+    if (row.row_version !== expectedVersion) {
+      return { success: false, conflict: true, current: getResidentById(id) };
+    }
+  }
+
+  if (fields.length === 0) return { success: true };
 
   fields.push("updated_at = datetime('now')");
+  fields.push('row_version = row_version + 1');
   values.push(id);
 
   db.prepare(`UPDATE residents SET ${fields.join(', ')} WHERE id = ?`).run(...values);
@@ -305,6 +326,7 @@ export function updateResident(id: number, data: Partial<Resident>): void {
       }
     }
   }
+  return { success: true };
 }
 
 export function deleteResident(id: number): void {

@@ -208,6 +208,14 @@ export function validateRow(
     data.is_4ps = 0;
   }
 
+  // Validate is_pwd
+  if (data.is_pwd !== undefined && data.is_pwd !== null) {
+    const val = String(data.is_pwd).trim().toLowerCase();
+    data.is_pwd = ['yes', 'y', '1', 'true', 'oo'].includes(val) ? 1 : 0;
+  } else {
+    data.is_pwd = 0;
+  }
+
   // Default status
   if (!data.status) {
     data.status = 'living';
@@ -484,4 +492,174 @@ export function exportResidentsToCSV(params: {
   }
 
   return csvRows.join('\n');
+}
+
+
+// ─── Excel template + relationship-aware import ──────────────────────────────
+// The Excel template is OUR known schema (no column mapping needed). It adds a
+// "Ref Code" column and three relationship columns so purok leaders can connect
+// family members right in the spreadsheet — see resolveRelationshipRef below.
+
+export interface ExcelColumn {
+  key: string;
+  header: string;
+  required?: boolean;
+  options?: string[];
+  help?: string;
+  relationship?: boolean; // resolved after rows are created, not a DB column
+}
+
+export const EXCEL_COLUMNS: ExcelColumn[] = [
+  { key: 'ref_code', header: 'Ref Code', help: 'Optional. Your own short label for this row (e.g. A1). Type it in a relationship column of another row to link them — e.g. put A1 in a child\'s "Mother" column to mark this person as the mother.', relationship: true },
+  { key: 'first_name', header: 'First Name', required: true },
+  { key: 'middle_name', header: 'Middle Name' },
+  { key: 'last_name', header: 'Last Name', required: true },
+  { key: 'suffix', header: 'Suffix', help: 'Jr., Sr., III' },
+  { key: 'birth_date', header: 'Birth Date', required: true, help: 'Format: YYYY-MM-DD (e.g. 1990-01-31)' },
+  { key: 'gender', header: 'Gender', required: true, options: ['Male', 'Female'] },
+  { key: 'civil_status', header: 'Civil Status', required: true, options: ['Single', 'Married', 'Widowed', 'Separated', 'Divorced'] },
+  { key: 'purok', header: 'Purok' },
+  { key: 'address', header: 'Address' },
+  { key: 'contact_number', header: 'Contact Number' },
+  { key: 'email', header: 'Email' },
+  { key: 'occupation', header: 'Occupation' },
+  { key: 'religion', header: 'Religion' },
+  { key: 'citizenship', header: 'Citizenship' },
+  { key: 'educational_attainment', header: 'Educational Attainment' },
+  { key: 'blood_type', header: 'Blood Type', options: ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-', 'Unknown'] },
+  { key: 'voter_status', header: 'Registered Voter', options: ['Registered', 'Not Registered'] },
+  { key: 'is_indigent', header: 'Indigent', options: ['Yes', 'No'] },
+  { key: 'is_4ps', header: '4Ps Beneficiary', options: ['Yes', 'No'] },
+  { key: 'is_pwd', header: 'PWD', options: ['Yes', 'No'] },
+  { key: 'pwd_note', header: 'PWD Note' },
+  { key: 'status', header: 'Status', options: ['living', 'deceased'] },
+  { key: 'notes', header: 'Notes' },
+  { key: 'spouse_ref', header: 'Spouse (Ref Code or Resident ID)', relationship: true, help: 'A Ref Code from this sheet, OR an existing Resident ID (from the "Existing Residents" sheet), OR a full name.' },
+  { key: 'mother_ref', header: 'Mother (Ref Code or Resident ID)', relationship: true, help: 'A Ref Code from this sheet, OR an existing Resident ID, OR a full name.' },
+  { key: 'father_ref', header: 'Father (Ref Code or Resident ID)', relationship: true, help: 'A Ref Code from this sheet, OR an existing Resident ID, OR a full name.' },
+];
+
+// Resolve a relationship cell to an existing/just-created resident id.
+// Order: (1) Ref Code in this sheet, (2) numeric Resident ID, (3) full-name match.
+function resolveRelationshipRef(
+  value: string | undefined,
+  refMap: Map<string, number>,
+  rowIndex: number,
+  field: string,
+  warnings: { row: number; field: string; message: string }[]
+): number | null {
+  const raw = (value || '').trim();
+  if (!raw) return null;
+
+  const refHit = refMap.get(raw.toLowerCase());
+  if (refHit) return refHit;
+
+  const db = getDb();
+  if (/^\d+$/.test(raw)) {
+    const found = db.prepare('SELECT id FROM residents WHERE id = ?').get(Number(raw)) as { id: number } | undefined;
+    if (found) return found.id;
+    warnings.push({ row: rowIndex, field, message: `${field}: no resident found with Resident ID ${raw} (and no matching Ref Code) — left unlinked` });
+    return null;
+  }
+
+  // Name match against existing residents (case-insensitive "first last")
+  const matches = db.prepare(
+    "SELECT id FROM residents WHERE LOWER(first_name || ' ' || last_name) = LOWER(?) LIMIT 2"
+  ).all(raw) as { id: number }[];
+  if (matches.length === 1) return matches[0].id;
+  if (matches.length > 1) {
+    warnings.push({ row: rowIndex, field, message: `${field}: more than one resident is named "${raw}" — use the Resident ID instead. Left unlinked.` });
+    return null;
+  }
+  warnings.push({ row: rowIndex, field, message: `${field}: "${raw}" did not match a Ref Code, Resident ID, or existing resident — left unlinked` });
+  return null;
+}
+
+// Import rows that already use the template's column KEYS (no mapping needed).
+export function runExcelImport(
+  rows: Record<string, string>[],
+  batchId: number,
+  skipDuplicates: boolean
+): ImportResult {
+  const db = getDb();
+  const errors: { row: number; field: string; message: string }[] = [];
+  const duplicates: DuplicateMatch[] = [];
+  let totalImported = 0;
+  let totalSkipped = 0;
+
+  // Identity mapping for the plain data fields (relationships handled separately)
+  const dataMapping: Record<string, string> = {};
+  for (const c of EXCEL_COLUMNS) {
+    if (!c.relationship) dataMapping[c.key] = c.key;
+  }
+
+  const refMap = new Map<string, number>();      // ref_code → new resident id
+  const created: { rowIndex: number; id: number; row: Record<string, string> }[] = [];
+
+  const transaction = db.transaction(() => {
+    // ── Pass 1: validate + create everyone ──
+    for (let i = 0; i < rows.length; i++) {
+      const raw = rows[i];
+      // Skip blank rows
+      if (!Object.values(raw).some(v => (v || '').toString().trim())) continue;
+
+      const { valid, data, errors: rowErrors } = validateRow(raw, dataMapping, 'YYYY-MM-DD', i + 2);
+      if (!valid) { errors.push(...rowErrors); totalSkipped++; continue; }
+
+      if (data.first_name && data.last_name && data.birth_date) {
+        const exactMatch = findExactDuplicate(data.first_name, data.last_name, data.birth_date);
+        if (exactMatch) {
+          duplicates.push({ type: 'exact', existingResident: exactMatch, newRow: raw, rowIndex: i + 2 });
+          if (skipDuplicates) { totalSkipped++; continue; }
+        }
+      }
+
+      try {
+        const id = residents.createResident({
+          first_name: data.first_name, last_name: data.last_name, birth_date: data.birth_date,
+          gender: data.gender, civil_status: data.civil_status,
+          middle_name: data.middle_name || null, suffix: data.suffix || null,
+          address: data.address || '', purok: data.purok || null,
+          contact_number: data.contact_number || null, email: data.email || null,
+          occupation: data.occupation || null, is_indigent: data.is_indigent || 0,
+          voter_status: data.voter_status || 'Not Registered', blood_type: data.blood_type || null,
+          notes: data.notes || null, religion: data.religion || null,
+          citizenship: data.citizenship || 'Filipino', philsys_card_no: data.philsys_card_no || null,
+          educational_attainment: data.educational_attainment || null, is_4ps: data.is_4ps || 0,
+          is_pwd: data.is_pwd || 0, pwd_note: data.pwd_note || null,
+          status: data.status || 'living', import_batch_id: batchId,
+        } as any);
+        created.push({ rowIndex: i + 2, id, row: raw });
+        const ref = (raw.ref_code || '').trim().toLowerCase();
+        if (ref) refMap.set(ref, id);
+        totalImported++;
+      } catch (err: any) {
+        errors.push({ row: i + 2, field: '_insert', message: err?.message || 'Insert failed' });
+        totalSkipped++;
+      }
+    }
+
+    // ── Pass 2: resolve & apply relationships ──
+    for (const c of created) {
+      const spouseId = resolveRelationshipRef(c.row.spouse_ref, refMap, c.rowIndex, 'Spouse', errors);
+      if (spouseId && spouseId !== c.id) residents.linkPartner(c.id, spouseId);
+
+      const motherId = resolveRelationshipRef(c.row.mother_ref, refMap, c.rowIndex, 'Mother', errors);
+      const fatherId = resolveRelationshipRef(c.row.father_ref, refMap, c.rowIndex, 'Father', errors);
+      const parentUpdate: Record<string, number> = {};
+      if (motherId && motherId !== c.id) parentUpdate.mother_id = motherId;
+      if (fatherId && fatherId !== c.id) parentUpdate.father_id = fatherId;
+      if (Object.keys(parentUpdate).length) residents.updateResident(c.id, parentUpdate as any);
+    }
+  });
+
+  transaction();
+
+  updateImportBatch(batchId, {
+    total_imported: totalImported,
+    total_skipped: totalSkipped,
+    total_errors: errors.length,
+  });
+
+  return { batchId, totalImported, totalSkipped, totalErrors: errors.length, errors, duplicates };
 }

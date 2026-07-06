@@ -1,19 +1,19 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Eye, LayoutGrid, Pencil, Settings2 } from 'lucide-react';
+import { ArrowLeft, Eye, LayoutGrid, Pencil, Settings2, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ToggleChip } from '@/components/ui/toggle-chip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { TEMPLATE_PAGES } from '@/lib/constants';
 import { toast } from 'sonner';
-import { getAPI, type Official, type PaperSettings } from '@/lib/ipc';
+import { getAPI, type Official, type PaperSettings, type Resident } from '@/lib/ipc';
 import { DEFAULT_PAPER, PAPER_SIZES, parsePaperJson } from '@/lib/paper';
 import { DocumentEditor } from '@/components/document-editor/document-editor';
 import { PaperSetupDialog } from '@/components/document-editor/paper-setup-dialog';
-import { tagsToChips, chipsToTags, resolvePreviewHtml, type PreviewContext } from '@/components/document-editor/serialize';
+import { tagsToChips, chipsToTags, resolvePreviewHtml, residentVars, type PreviewContext } from '@/components/document-editor/serialize';
 
 function TemplateEditorPage() {
   const router = useRouter();
@@ -29,6 +29,11 @@ function TemplateEditorPage() {
   // null = template shows on every page; otherwise only on the listed pages
   const [pages, setPages] = useState<string[] | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewResident, setPreviewResident] = useState<Resident | null>(null);
+  const [previewQuery, setPreviewQuery] = useState('');
+  const [previewResults, setPreviewResults] = useState<Resident[]>([]);
+  const previewCtxRef = useRef<PreviewContext | null>(null);
+  const editorHtmlRef = useRef('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -56,13 +61,10 @@ function TemplateEditorPage() {
     })();
   }, [templateId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const togglePreview = async () => {
-    if (previewHtml) {
-      setPreviewHtml(null);
-      return;
-    }
+  const ensureCtx = async (): Promise<PreviewContext | null> => {
+    if (previewCtxRef.current) return previewCtxRef.current;
     const api = getAPI();
-    if (!api) return;
+    if (!api) return null;
     const [barangay, barangayAddress, municipality, province, headerTemplate, logo, officials] = await Promise.all([
       api.getSetting('barangay_name'),
       api.getSetting('barangay_address'),
@@ -73,16 +75,42 @@ function TemplateEditorPage() {
       api.getOfficials().then((list: Official[]) => list.filter(o => o.is_active)).catch(() => [] as Official[]),
     ]);
     const ctx: PreviewContext = {
-      barangay: barangay || '',
-      barangayAddress: barangayAddress || '',
-      municipality: municipality || '',
-      province: province || '',
-      headerTemplate: headerTemplate || null,
-      logoDataUrl: logo,
-      officials,
+      barangay: barangay || '', barangayAddress: barangayAddress || '',
+      municipality: municipality || '', province: province || '',
+      headerTemplate: headerTemplate || null, logoDataUrl: logo, officials,
     };
-    setPreviewHtml(resolvePreviewHtml(chipsToTags(editorHtml), ctx));
+    previewCtxRef.current = ctx;
+    return ctx;
   };
+
+  const renderPreview = async (resident: Resident | null) => {
+    const ctx = await ensureCtx();
+    if (!ctx) return;
+    setPreviewResident(resident);
+    setPreviewHtml(resolvePreviewHtml(chipsToTags(editorHtmlRef.current || editorHtml), ctx, resident ? residentVars(resident) : undefined));
+  };
+
+  const togglePreview = async () => {
+    if (previewHtml) {
+      setPreviewHtml(null);
+      setPreviewResident(null);
+      setPreviewQuery('');
+      setPreviewResults([]);
+      return;
+    }
+    await renderPreview(previewResident);
+  };
+
+  // Resident search for "preview as a real person"
+  useEffect(() => {
+    if (!previewHtml || !previewQuery.trim() || previewQuery.length < 2) { setPreviewResults([]); return; }
+    const tmr = setTimeout(async () => {
+      const api = getAPI();
+      if (!api) return;
+      setPreviewResults(await api.searchResidents(previewQuery.trim(), 8));
+    }, 300);
+    return () => clearTimeout(tmr);
+  }, [previewQuery, previewHtml]);
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -185,7 +213,7 @@ function TemplateEditorPage() {
         </Popover>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={togglePreview}>
-            {previewHtml ? (<><Pencil className="mr-2 h-4 w-4" />Back to Editing</>) : (<><Eye className="mr-2 h-4 w-4" />Preview with Sample Data</>)}
+            {previewHtml ? (<><Pencil className="mr-2 h-4 w-4" />Back to Editing</>) : (<><Eye className="mr-2 h-4 w-4" />Preview</>)}
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save Template'}
@@ -193,9 +221,50 @@ function TemplateEditorPage() {
         </div>
       </div>
 
+      {/* Preview sub-bar — choose sample data or a real resident */}
+      {previewHtml && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
+          <span className="text-xs font-medium text-muted-foreground">Previewing as:</span>
+          <span className="rounded-full bg-background border px-2.5 py-0.5 text-xs font-medium">
+            {previewResident
+              ? [previewResident.first_name, previewResident.last_name].filter(Boolean).join(' ')
+              : 'Sample data'}
+          </span>
+          {previewResident && (
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => renderPreview(null)}>
+              <X className="mr-1 h-3 w-3" />Use sample data
+            </Button>
+          )}
+          <div className="relative ml-auto w-64 max-w-full">
+            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={previewQuery}
+              onChange={(e) => setPreviewQuery(e.target.value)}
+              placeholder="Preview with a real resident..."
+              className="h-8 pl-8 text-xs"
+            />
+            {previewResults.length > 0 && (
+              <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover shadow-lg">
+                {previewResults.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => { renderPreview(r); setPreviewQuery(''); setPreviewResults([]); }}
+                    className="block w-full border-b px-3 py-2 text-left text-sm last:border-b-0 hover:bg-accent"
+                  >
+                    {r.first_name} {r.last_name}{r.suffix ? ` ${r.suffix}` : ''}
+                    <span className="text-xs text-muted-foreground"> · {r.purok ? `Purok ${r.purok}` : 'resident'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <DocumentEditor
         content={initialContent}
-        onChange={setEditorHtml}
+        onChange={(html) => { setEditorHtml(html); editorHtmlRef.current = html; }}
         paper={paper}
         previewHtml={previewHtml}
         onEditLetterhead={() => router.push('/settings/barangay')}

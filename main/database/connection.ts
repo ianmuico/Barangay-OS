@@ -166,6 +166,9 @@ function runInlineMigrations(db: Database.Database): void {
     { name: '014_business_documents.sql',          sql: MIGRATION_014 },
     { name: '015_resident_uid.sql',                sql: MIGRATION_015 },
     { name: '016_pwd.sql',                         sql: MIGRATION_016 },
+    { name: '017_api_clients_provenance.sql',      sql: MIGRATION_017 },
+    { name: '018_row_version.sql',                 sql: MIGRATION_018 },
+    { name: '019_app_users_roles.sql',             sql: MIGRATION_019 },
     // ─── Add future migrations here ────────────────────────────────────
   ];
 
@@ -436,6 +439,60 @@ ALTER TABLE residents ADD COLUMN death_date TEXT;
 const MIGRATION_010 = `
 -- Per-template paper settings: {"size":"A4"|"Letter"|"Long","orientation":"portrait"|"landscape","margins":{"top":1,"bottom":1,"left":1,"right":1}} (margins in inches)
 ALTER TABLE report_templates ADD COLUMN paper_json TEXT;
+`;
+
+const MIGRATION_019 = `
+-- Mobile app users + dynamic roles (separate from desktop login accounts).
+-- Passwords are stored reversibly encrypted so the admin can reveal them
+-- (local-first design choice). Roles carry granular permissions.
+CREATE TABLE IF NOT EXISTS app_roles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  perm_search INTEGER NOT NULL DEFAULT 0,
+  perm_read INTEGER NOT NULL DEFAULT 0,
+  perm_create INTEGER NOT NULL DEFAULT 0,
+  perm_delete INTEGER NOT NULL DEFAULT 0,
+  is_system INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS app_users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE,
+  full_name TEXT,
+  password_enc TEXT NOT NULL,
+  role_id INTEGER REFERENCES app_roles(id) ON DELETE SET NULL,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_login TEXT
+);
+-- Starter roles (admin can rename / edit / add more)
+INSERT OR IGNORE INTO app_roles (name, perm_search, perm_read, perm_create, perm_delete, is_system) VALUES
+  ('Administrator', 1, 1, 1, 1, 1),
+  ('Encoder',       1, 1, 1, 0, 0),
+  ('Purok Leader',  1, 1, 0, 0, 0);
+INSERT OR IGNORE INTO settings (key, value) VALUES ('online_enabled', '1');
+`;
+
+const MIGRATION_018 = `
+-- Optimistic-concurrency version counter. Bumped on every resident update so
+-- two people editing the same record can't silently overwrite each other.
+ALTER TABLE residents ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;
+`;
+
+const MIGRATION_017 = `
+-- Per-device API clients for the mobile partner app + record provenance.
+-- A client can only EDIT residents it created; everyone can search and add.
+CREATE TABLE IF NOT EXISTS api_clients (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_seen TEXT
+);
+ALTER TABLE residents ADD COLUMN created_via TEXT;          -- 'desktop' | 'mobile'
+ALTER TABLE residents ADD COLUMN created_by_client INTEGER; -- api_clients.id, NULL = desktop/admin key
+CREATE INDEX IF NOT EXISTS idx_residents_created_by_client ON residents(created_by_client);
 `;
 
 const MIGRATION_016 = `

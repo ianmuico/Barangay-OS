@@ -3,6 +3,7 @@ main/dist/
 renderer/.next/
 renderer/out/
 dist/
+release/
 *.db
 *.db-wal
 *.db-shm

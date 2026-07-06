@@ -1,0 +1,56 @@
+# Build & publish the desktop app for Windows AND macOS, automatically.
+#
+# Trigger: push a version tag like  v1.1.0
+#   git tag v1.1.0 && git push origin v1.1.0
+#
+# What happens: GitHub spins up a Windows runner and a macOS runner, each builds
+# its own installer, and both upload to the SAME GitHub Release (v1.1.0).
+#   - Windows → BarangayManagement-Setup-1.1.0.exe + latest.yml   (silent auto-update)
+#   - macOS   → BarangayManagement-1.1.0-arm64.dmg + .zip + latest-mac.yml (notify + download)
+#
+# No personal token needed here — GitHub gives the workflow its own token
+# (GITHUB_TOKEN) with permission to publish releases on THIS repo.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write        # lets electron-builder create/update the GitHub Release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false     # if one OS fails, still finish the other
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Installs deps and (via the postinstall electron-rebuild) compiles the
+      # native SQLite module for THIS runner's OS — that's why each platform
+      # must build on its own machine.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer + main
+        run: npm run build
+
+      - name: Publish Windows installer
+        if: runner.os == 'Windows'
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish macOS build
+        if: runner.os == 'macOS'
+        run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

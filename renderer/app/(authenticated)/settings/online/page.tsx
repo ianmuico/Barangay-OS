@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Wifi, WifiOff, Copy, RefreshCw, CheckCircle2, XCircle, BookOpen, ServerCog, ShieldAlert } from 'lucide-react';
+import { Wifi, WifiOff, Copy, RefreshCw, CheckCircle2, XCircle, BookOpen, ServerCog, ShieldAlert, Smartphone, Plus, Trash2, Power, Globe } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,8 +9,11 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from '@/components/ui/dialog';
 import { PageHeader } from '@/components/page-header';
-import { getAPI, type ServerStatus } from '@/lib/ipc';
+import { getAPI, type ServerStatus, type TunnelState } from '@/lib/ipc';
 import { toast } from 'sonner';
 
 const ENDPOINTS = [
@@ -50,6 +53,41 @@ export default function OnlineModePage() {
   const [toggling, setToggling] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [clients, setClients] = useState<{ id: number; name: string; is_active: number; created_at: string; last_seen: string | null }[]>([]);
+  const [newClientName, setNewClientName] = useState('');
+  const [issuedToken, setIssuedToken] = useState<{ name: string; token: string } | null>(null);
+  const [tunnel, setTunnel] = useState<TunnelState>({ status: 'stopped', url: null, error: null });
+  const [tunnelBusy, setTunnelBusy] = useState(false);
+
+  const loadClients = async () => {
+    const api = getAPI();
+    if (!api) return;
+    try { setClients(await api.listApiClients()); } catch { /* not admin */ }
+  };
+
+  const addClient = async () => {
+    const api = getAPI();
+    if (!api || !newClientName.trim()) return;
+    const res = await api.createApiClient(newClientName.trim());
+    setIssuedToken({ name: newClientName.trim(), token: res.token });
+    setNewClientName('');
+    loadClients();
+  };
+
+  const toggleClient = async (id: number, active: boolean) => {
+    const api = getAPI();
+    if (!api) return;
+    await api.setApiClientActive(id, active);
+    loadClients();
+  };
+
+  const removeClient = async (id: number) => {
+    const api = getAPI();
+    if (!api) return;
+    await api.deleteApiClient(id);
+    toast.success('Device key revoked');
+    loadClients();
+  };
 
   useEffect(() => {
     const api = getAPI();
@@ -57,7 +95,27 @@ export default function OnlineModePage() {
     api.getServerStatus().then(setStatus);
     api.getSetting('api_port').then((v) => setPort(v || '3001'));
     api.getSetting('api_key').then((v) => setApiKey(v || ''));
+    api.listApiClients().then(setClients).catch(() => {});
+    api.getTunnelStatus().then(setTunnel).catch(() => {});
   }, []);
+
+  const toggleTunnel = async () => {
+    const api = getAPI();
+    if (!api) return;
+    setTunnelBusy(true);
+    try {
+      if (tunnel.status === 'running') {
+        setTunnel(await api.stopTunnel());
+        toast.success('Internet access turned off');
+      } else {
+        setTunnel({ status: 'starting', url: null, error: null });
+        const result = await api.startTunnel();
+        setTunnel(result);
+        if (result.status === 'running') toast.success('Internet access is on');
+        else if (result.error) toast.error(result.error);
+      }
+    } finally { setTunnelBusy(false); }
+  };
 
   const toggleServer = async () => {
     const api = getAPI();
@@ -223,13 +281,123 @@ for r in res.json()["data"]:
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
+                <Globe className={`h-4 w-4 ${tunnel.status === 'running' ? 'text-green-500' : ''}`} />
+                Internet Access
+              </CardTitle>
+              <CardDescription>
+                Let phones connect from anywhere — not just the office Wi-Fi — through a free secure tunnel (no router setup needed). Requires the server above to be running.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">
+                    {tunnel.status === 'running' ? 'Internet access is ON'
+                      : tunnel.status === 'downloading' ? 'Downloading tunnel helper (one-time, ~40 MB)...'
+                      : tunnel.status === 'starting' ? 'Connecting...'
+                      : 'Internet access is OFF'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {tunnel.status === 'running'
+                      ? 'Phones can use the internet URL below.'
+                      : 'When off, phones can only connect on the same Wi-Fi.'}
+                  </p>
+                </div>
+                <Switch
+                  checked={tunnel.status === 'running' || tunnel.status === 'starting' || tunnel.status === 'downloading'}
+                  onCheckedChange={toggleTunnel}
+                  disabled={tunnelBusy || !status.running}
+                />
+              </div>
+
+              {tunnel.status === 'running' && tunnel.url && (
+                <div className="rounded-lg border p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Internet URL</p>
+                      <code className="text-sm break-all">{tunnel.url}</code>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => copy(tunnel.url!)}><Copy className="h-4 w-4" /></Button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Enter this as the <span className="font-medium">Internet URL</span> in the mobile app&apos;s Connect screen. It changes every time internet access is turned on — phones fall back to the Wi-Fi URL automatically, but re-share this URL after restarting it.
+                  </p>
+                </div>
+              )}
+
+              {tunnel.status === 'error' && tunnel.error && (
+                <p className="text-sm text-destructive">{tunnel.error}</p>
+              )}
+
+              {!status.running && (
+                <p className="text-xs text-muted-foreground">Start the server first to enable internet access.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Smartphone className="h-4 w-4" />
+                Mobile Device Keys
+              </CardTitle>
+              <CardDescription>
+                Give each phone/account its own key instead of sharing the master key. A device key can search and add
+                residents, but can only <strong>edit</strong> records it added itself. Revoke a key anytime without affecting others.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={newClientName}
+                  onChange={(e) => setNewClientName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') addClient(); }}
+                  placeholder="Device or staff name (e.g. Kgwd. Maria's phone)"
+                  className="h-9"
+                />
+                <Button onClick={addClient} disabled={!newClientName.trim()}>
+                  <Plus className="mr-2 h-4 w-4" />Issue Key
+                </Button>
+              </div>
+
+              {clients.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No device keys yet. The master key above still works for any client.</p>
+              ) : (
+                <div className="divide-y rounded-md border">
+                  {clients.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className={`truncate text-sm font-medium ${c.is_active ? '' : 'text-muted-foreground line-through'}`}>{c.name}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {c.last_seen ? `Last used ${new Date(c.last_seen).toLocaleString('en-PH')}` : 'Never used'}
+                          {!c.is_active && ' · disabled'}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-0.5">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" title={c.is_active ? 'Disable' : 'Enable'} onClick={() => toggleClient(c.id, !c.is_active)}>
+                          <Power className={`h-4 w-4 ${c.is_active ? 'text-green-600' : 'text-muted-foreground'}`} />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Revoke" onClick={() => removeClient(c.id)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
                 <ShieldAlert className="h-4 w-4" />
                 Security Notes
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
-                <li>The API is <strong className="text-foreground">read-only</strong> — external apps can view data but never change it.</li>
+                <li>The mobile app can <strong className="text-foreground">search and add</strong> residents. It can only <strong className="text-foreground">edit</strong> a record that was added from that same device. Deleting is desktop-only.</li>
                 <li>It only works on your <strong className="text-foreground">local network</strong> (same Wi-Fi/LAN). It is not exposed to the internet unless you deliberately configure your router to do so — don&apos;t.</li>
                 <li>Anyone with the API key can read resident data. Treat the key like a password and regenerate it if it leaks or when staff with access leave.</li>
                 <li>Requests are rate-limited to 100 per minute per device.</li>
@@ -324,6 +492,26 @@ for r in res.json()["data"]:
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!issuedToken} onOpenChange={() => setIssuedToken(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Device Key for {issuedToken?.name}</DialogTitle>
+            <DialogDescription>
+              Copy this key into the mobile app now — it is shown only once. Treat it like a password.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 rounded-md border bg-muted/40 p-3">
+            <code className="flex-1 break-all text-xs">{issuedToken?.token}</code>
+            <Button variant="ghost" size="icon" onClick={() => { if (issuedToken) copy(issuedToken.token); }}>
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIssuedToken(null)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

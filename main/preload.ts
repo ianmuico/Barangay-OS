@@ -136,8 +136,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getResidents: (params: ResidentListParams) => ipcRenderer.invoke('db:residents:list', params),
   getResident: (id: number) => ipcRenderer.invoke('db:residents:get', id),
   searchResidents: (query: string, limit?: number) => ipcRenderer.invoke('db:residents:search', query, limit),
-  createResident: (data: ResidentData) => ipcRenderer.invoke('db:residents:create', data),
-  updateResident: (id: number, data: Partial<ResidentData>) => ipcRenderer.invoke('db:residents:update', id, data),
+  createResident: (data: ResidentData & { force?: boolean }) => ipcRenderer.invoke('db:residents:create', data),
+  updateResident: (id: number, data: Partial<ResidentData>, expectedVersion?: number) => ipcRenderer.invoke('db:residents:update', id, data, expectedVersion),
   deleteResident: (id: number) => ipcRenderer.invoke('db:residents:delete', id),
   linkPartner: (residentId: number, partnerId: number) => ipcRenderer.invoke('db:residents:linkPartner', residentId, partnerId),
   unlinkPartner: (residentId: number) => ipcRenderer.invoke('db:residents:unlinkPartner', residentId),
@@ -179,6 +179,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('reports:printList', options),
   printGroupedList: (options: PrintGroupedListOptions) =>
     ipcRenderer.invoke('reports:printGroupedList', options),
+
+  // Excel template / import
+  downloadExcelTemplate: (includeExisting?: boolean) => ipcRenderer.invoke('excel:downloadTemplate', includeExisting),
+  readExcelFile: (filePath: string) => ipcRenderer.invoke('excel:readFile', filePath),
+  importExcel: (rows: Record<string, string>[], skipDuplicates: boolean) => ipcRenderer.invoke('excel:import', rows, skipDuplicates),
   getGeneratedReports: (residentId?: number) =>
     ipcRenderer.invoke('db:reports:list', residentId),
   saveCaseDocument: (data: { case_id: number; title: string; content_html: string }) =>
@@ -255,6 +260,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopServer: () => ipcRenderer.invoke('server:stop'),
   getServerStatus: () => ipcRenderer.invoke('server:status'),
   testServer: () => ipcRenderer.invoke('server:test'),
+  startTunnel: () => ipcRenderer.invoke('tunnel:start'),
+  stopTunnel: () => ipcRenderer.invoke('tunnel:stop'),
+  getTunnelStatus: () => ipcRenderer.invoke('tunnel:status'),
+  listApiClients: () => ipcRenderer.invoke('db:apiclients:list'),
+  createApiClient: (name: string) => ipcRenderer.invoke('db:apiclients:create', name),
+  setApiClientActive: (id: number, active: boolean) => ipcRenderer.invoke('db:apiclients:setActive', id, active),
+  deleteApiClient: (id: number) => ipcRenderer.invoke('db:apiclients:delete', id),
+
+  // Live presence (who's editing/adding what)
+  presenceHeartbeat: (input: { entity: string; id: string; action: string; sessionId: string; label?: string }) => ipcRenderer.invoke('presence:heartbeat', input),
+  presenceRelease: (sessionId: string) => ipcRenderer.invoke('presence:release', sessionId),
+  presenceList: () => ipcRenderer.invoke('presence:list'),
+
+  // Mobile app users & roles (admin)
+  listAppRoles: () => ipcRenderer.invoke('db:approles:list'),
+  createAppRole: (name: string, perms: { search: boolean; read: boolean; create: boolean; delete: boolean }) => ipcRenderer.invoke('db:approles:create', name, perms),
+  updateAppRole: (id: number, data: { name?: string; perms?: { search: boolean; read: boolean; create: boolean; delete: boolean } }) => ipcRenderer.invoke('db:approles:update', id, data),
+  deleteAppRole: (id: number) => ipcRenderer.invoke('db:approles:delete', id),
+  listAppUsers: () => ipcRenderer.invoke('db:appusers:list'),
+  createAppUser: (data: { username: string; full_name?: string | null; password: string; role_id: number | null }) => ipcRenderer.invoke('db:appusers:create', data),
+  updateAppUser: (id: number, data: Record<string, unknown>) => ipcRenderer.invoke('db:appusers:update', id, data),
+  deleteAppUser: (id: number) => ipcRenderer.invoke('db:appusers:delete', id),
+  revealAppUserPassword: (id: number) => ipcRenderer.invoke('db:appusers:revealPassword', id),
 
   // Cases & Summons
   getCases: (params?: { search?: string; status?: string }) => ipcRenderer.invoke('db:cases:list', params),
@@ -317,4 +345,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('file:getLogoBase64'),
   getImageBase64: (imagePath: string) =>
     ipcRenderer.invoke('file:getImageBase64', imagePath),
+
+  // AI Assistant (template drafting — sends only placeholder tokens, never resident data)
+  aiTest: () => ipcRenderer.invoke('ai:test'),
+  aiGenerateTemplate: (payload: { instruction: string; variables: { key: string; label: string }[] }) =>
+    ipcRenderer.invoke('ai:generateTemplate', payload),
+  aiImproveTemplate: (payload: { instruction: string; currentHtml: string; variables: { key: string; label: string }[] }) =>
+    ipcRenderer.invoke('ai:improveTemplate', payload),
+  // Fired when local AI is auto-disabled because it was lagging this computer.
+  onAIAutoDisabled: (callback: (data: { reason: string }) => void) => {
+    const handler = (_e: unknown, data: { reason: string }) => callback(data);
+    ipcRenderer.on('ai:autoDisabled', handler);
+    return () => ipcRenderer.removeListener('ai:autoDisabled', handler);
+  },
 });

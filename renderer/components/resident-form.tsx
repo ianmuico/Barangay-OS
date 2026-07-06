@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { Search, X, Link2, Unlink, Plus, UserMinus } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Search, X, Link2, Unlink, Plus, UserMinus, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -160,6 +160,8 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
     death_date: '',
   });
   const [saving, setSaving] = useState(false);
+  const [othersEditing, setOthersEditing] = useState<{ who: string; action: string }[]>([]);
+  const sessionIdRef = useRef<string>(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()));
   const [partnerName, setPartnerName] = useState('');
   const [motherName, setMotherName] = useState('');
   const [fatherName, setFatherName] = useState('');
@@ -297,6 +299,27 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
     return parts.join(' ') || 'New Resident';
   }, [formData.first_name, formData.last_name]);
 
+  // Live presence — let the office see who else is on this same person right now
+  useEffect(() => {
+    const api = getAPI() as any;
+    if (!open || !resident?.id || !api?.presenceHeartbeat) { setOthersEditing([]); return; }
+    const sessionId = sessionIdRef.current;
+    let active = true;
+    const beat = async () => {
+      try {
+        const others = await api.presenceHeartbeat({ entity: 'resident', id: String(resident.id), action: 'editing', sessionId, label: displayName });
+        if (active) setOthersEditing((others || []).map((o: any) => ({ who: o.who, action: o.action })));
+      } catch { /* ignore */ }
+    };
+    beat();
+    const interval = setInterval(beat, 10000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+      try { api.presenceRelease?.(sessionId); } catch { /* ignore */ }
+    };
+  }, [open, resident?.id]);
+
   const initials = useMemo(() => {
     return getInitials(displayName);
   }, [displayName]);
@@ -309,6 +332,14 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
         </DialogDescription>
 
         <form onSubmit={handleSubmit}>
+          {othersEditing.length > 0 && (
+            <div className="flex items-center gap-2 bg-amber-100 px-4 py-2 text-xs font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+              <Eye className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                {othersEditing.map(o => o.who).join(', ')} {othersEditing.length === 1 ? 'is' : 'are'} also editing this person right now — your save may overwrite theirs.
+              </span>
+            </div>
+          )}
           {/* ── Gradient Profile Header ── */}
           <div className="relative">
             {/* Banner */}

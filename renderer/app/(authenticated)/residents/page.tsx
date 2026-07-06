@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { Plus, Pencil, Trash2, FileText, Printer, Upload, Download } from 'lucide-react';
+import { Plus, Pencil, Trash2, FileText, Printer, Upload, Download, FileSpreadsheet } from 'lucide-react';
 import { DataTable } from '@/components/data-table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +28,7 @@ import { invalidateCache } from '@/lib/cache';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/empty-state';
 import { CSVImportDialog } from '@/components/csv-import-dialog';
+import { ExcelImportDialog } from '@/components/excel-import-dialog';
 import { useTranslation } from 'react-i18next';
 
 export default function ResidentsPage() {
@@ -51,6 +52,8 @@ export default function ResidentsPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [printListOpen, setPrintListOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [excelImportOpen, setExcelImportOpen] = useState(false);
+  const [pendingDup, setPendingDup] = useState<{ data: any; existing: { first_name: string; last_name: string; birth_date: string; purok: string | null } } | null>(null);
 
   usePageSearch(search, setSearch, 'Search residents...');
 
@@ -70,21 +73,48 @@ export default function ResidentsPage() {
     setPage(1);
   }, [debouncedSearch]);
 
+  const afterWrite = () => {
+    setEditResident(null);
+    invalidateCache('residents');
+    invalidateCache('dashboard');
+    fetchResidents();
+  };
+
   const handleSave = async (data: any) => {
     const api = getAPI();
     if (!api) return;
 
     if (editResident) {
-      await api.updateResident(editResident.id, data);
+      // Optimistic concurrency — send the version we loaded
+      const result = await api.updateResident(editResident.id, data, editResident.row_version);
+      if (result.conflict) {
+        toast.error('Someone else changed this resident while you were editing. Reloading the latest — please re-apply your change.');
+        setFormOpen(false);
+        afterWrite();
+        return;
+      }
       toast.success('Resident updated');
+      afterWrite();
     } else {
-      await api.createResident(data);
+      const result = await api.createResident(data);
+      if (result.duplicate) {
+        // Hold the entry and ask the admin to confirm it's a different person
+        setPendingDup({ data, existing: result.duplicate });
+        return;
+      }
       toast.success('Resident added');
+      afterWrite();
     }
-    setEditResident(null);
-    invalidateCache('residents');
-    invalidateCache('dashboard');
-    fetchResidents();
+  };
+
+  const confirmDuplicateCreate = async () => {
+    const api = getAPI();
+    if (!api || !pendingDup) return;
+    await api.createResident({ ...pendingDup.data, force: true });
+    toast.success('Resident added');
+    setPendingDup(null);
+    setFormOpen(false);
+    afterWrite();
   };
 
   const handleDelete = async () => {
@@ -227,9 +257,23 @@ export default function ResidentsPage() {
           onRowClick={(r) => { setDetailId(r.id); setDetailOpen(true); }}
           toolbar={
             <div className="flex gap-2">
+              <Button variant="outline" onClick={async () => {
+                const api = getAPI();
+                if (!api) return;
+                const r = await api.downloadExcelTemplate(true);
+                if (r.success) toast.success(`Template saved to ${r.path}`);
+                else if (r.error !== 'Save cancelled') toast.error(r.error || 'Failed to build template');
+              }}>
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                Excel Template
+              </Button>
+              <Button variant="outline" onClick={() => setExcelImportOpen(true)}>
+                <Upload className="mr-2 h-4 w-4" />
+                Import Excel
+              </Button>
               <Button variant="outline" onClick={() => setImportOpen(true)}>
                 <Upload className="mr-2 h-4 w-4" />
-                Import
+                Import CSV
               </Button>
               <Button variant="outline" onClick={async () => {
                 const api = getAPI();
@@ -287,6 +331,29 @@ export default function ResidentsPage() {
         />
       )}
 
+      <AlertDialog open={pendingDup !== null} onOpenChange={(o) => { if (!o) setPendingDup(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Possible Duplicate</AlertDialogTitle>
+            <AlertDialogDescription>
+              A resident with the same name and birth date already exists:
+              {pendingDup && (
+                <span className="mt-2 block rounded-md border bg-muted/40 px-3 py-2 text-sm text-foreground">
+                  {pendingDup.existing.first_name} {pendingDup.existing.last_name}
+                  {' · '}{pendingDup.existing.birth_date}
+                  {pendingDup.existing.purok ? ` · Purok ${pendingDup.existing.purok}` : ''}
+                </span>
+              )}
+              <span className="mt-2 block">Add this as a separate new record anyway? Only do this if they are genuinely different people.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDuplicateCreate}>Add as new record</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <ResidentDetailDialog residentId={detailId} open={detailOpen} onOpenChange={setDetailOpen} />
 
       <CategoryPrintDialog
@@ -295,6 +362,16 @@ export default function ResidentsPage() {
         title="All Residents"
         filterParams={{}}
         groupOptions={ALL_RESIDENTS_GROUP_OPTIONS}
+      />
+
+      <ExcelImportDialog
+        open={excelImportOpen}
+        onClose={() => setExcelImportOpen(false)}
+        onImportComplete={() => {
+          invalidateCache('residents');
+          invalidateCache('dashboard');
+          fetchResidents();
+        }}
       />
 
       <CSVImportDialog

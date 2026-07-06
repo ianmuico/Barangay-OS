@@ -8,9 +8,8 @@ import { AboutDialog } from './about-dialog';
 import {
   LayoutDashboard, Users, UserCheck, HeartHandshake, Baby,
   GitBranch, FileSearch, FileText, Landmark,
-  Settings, Building2, Shield, Database, Wifi, Info,
-  ChevronDown, Loader2, Heart, Archive, Scale, Bell, FolderOpen, Flag, Store, UserPlus, Accessibility,
-} from 'lucide-react';
+  Settings, Building2, Shield, Database, Wifi, Sparkles, Info,
+  ChevronDown, Loader2, Heart, Archive, Scale, Bell, FolderOpen, Flag, Store, UserPlus, Accessibility, Smartphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -75,7 +74,9 @@ const settingsItems: NavItem[] = [
   { href: '/settings/users', label: 'User Management', icon: Shield },
   { href: '/settings/backup', label: 'Backup & Restore', icon: Database },
   { href: '/settings/online', label: 'Online Mode', icon: Wifi },
+  { href: '/settings/ai', label: 'AI Assistant', icon: Sparkles },
   { href: '/settings/notifications', label: 'Notifications', icon: Bell },
+  { href: '/settings/app-users', label: 'Mobile App Users', icon: Smartphone },
 ];
 
 function NavLink({

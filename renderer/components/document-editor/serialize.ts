@@ -132,11 +132,13 @@ export function buildLetterheadHtml(ctx: Pick<PreviewContext, 'barangay' | 'muni
   </div>`;
 }
 
-export function resolvePreviewHtml(taggedHtml: string, ctx: PreviewContext): string {
+// `residentOverride` (from residentVars) previews with a REAL resident's data;
+// omit it to preview with the built-in sample resident.
+export function resolvePreviewHtml(taggedHtml: string, ctx: PreviewContext, residentOverride?: Record<string, string>): string {
   const now = new Date();
   const month = now.toLocaleDateString('en-PH', { month: 'long' });
   const vars: Record<string, string> = {
-    ...SAMPLE_RESIDENT,
+    ...(residentOverride || SAMPLE_RESIDENT),
     barangay: ctx.barangay || 'Barangay Name',
     barangayAddress: ctx.barangayAddress || '',
     municipality: ctx.municipality || 'Municipality',

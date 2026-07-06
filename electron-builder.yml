@@ -1,29 +1,78 @@
-appId: com.barangay.management
+# ─────────────────────────────────────────────────────────────────────────────
+# electron-builder configuration — THE SINGLE SOURCE OF TRUTH
+#
+# This is the ONE place that defines how installers are built and published.
+# (The old duplicate "build" block in package.json has been removed so the two
+#  can never disagree again.)
+#
+# ⚠️  appId is the app's identity on Windows/macOS. Auto-updates only replace an
+#     installed app cleanly when the new release has the SAME appId.
+#     DO NOT CHANGE appId once a build has been shipped to any barangay.
+#     (Safe to change right now — nothing has been released yet.)
+# ─────────────────────────────────────────────────────────────────────────────
+
+appId: ph.barangay.management
 productName: Barangay Management System
+
 directories:
-  output: dist
+  output: release          # installers are written to release/ (git-ignored)
+
+# What gets packaged into the app: compiled main process + exported renderer.
 files:
   - main/dist/**/*
   - renderer/out/**/*
   - package.json
+
+# Ship the resources/ folder (logos, assets) alongside the app.
 extraResources:
   - resources/**/*
+
+# better-sqlite3 is a native module — it MUST stay unpacked from the asar
+# archive or the database will fail to load at runtime.
 asar: true
 asarUnpack:
   - "**/*.node"
   - "**/better-sqlite3/**"
+
+# Update feed: installed apps poll this private repo's Releases. See RELEASING.md.
 publish:
   provider: github
   owner: mmmsss211
   repo: barangay-management
   private: true
-mac:
-  target: dmg
-  category: public.app-category.business
+
+# ── Windows (primary target for barangays) ──────────────────────────────────
 win:
-  target: nsis
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: BarangayManagement-Setup-${version}.${ext}
+
 nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
+  oneClick: true                   # one-click install, no options to confuse staff
+  perMachine: false                # per-user install — no admin rights required
+  deleteAppDataOnUninstall: false  # NEVER wipe the barangay's database on uninstall
+
+# ── macOS ───────────────────────────────────────────────────────────────────
+# dmg = what people download and install by hand.
+# zip = the feed electron-updater reads to DETECT a new version (latest-mac.yml).
+# identity: null → build WITHOUT paid Apple code-signing (free). macOS shows an
+#   "unidentified developer" prompt on the FIRST open (right-click → Open, once).
+# Because the app isn't Apple-signed it can't silently self-apply an update, so on
+# macOS the app NOTIFIES and opens the download page (see main/utils/updater.ts).
+# The barangay's data lives in ~/Library/Application Support/, OUTSIDE the .app, so
+# replacing the app only updates the software — the database is never touched.
+# Built for Apple Silicon (arm64) by default; add x64 later for Intel Macs.
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.business
+  identity: null
+  artifactName: BarangayManagement-${version}-${arch}.${ext}
+
+# ── Linux (optional) ────────────────────────────────────────────────────────
 linux:
-  target: AppImage
+  target:
+    - AppImage

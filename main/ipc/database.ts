@@ -11,6 +11,8 @@ import * as audit from '../database/queries/audit';
 import * as issues from '../database/queries/issues';
 import * as businesses from '../database/queries/businesses';
 import * as officials from '../database/queries/officials';
+import * as apiClients from '../database/queries/apiClients';
+import * as appAuth from '../database/queries/appAuth';
 import { hashPasswordSync, verifyPasswordSync } from '../utils/hash';
 import { getCurrentSessionUser } from './auth';
 import * as importModule from '../database/queries/import';
@@ -46,14 +48,23 @@ export function registerDatabaseHandlers(): void {
   });
 
   ipcMain.handle('db:residents:create', async (_event, data) => {
-    const id = residents.createResident(data);
+    // Duplicate guard — unless the admin confirms (force) it's a different person.
+    if (!data.force && data.first_name && data.last_name && data.birth_date) {
+      const dup = importModule.findExactDuplicate(data.first_name, data.last_name, data.birth_date);
+      if (dup) return { duplicate: dup };
+    }
+    const { force, ...clean } = data;
+    const id = residents.createResident(clean);
     const user = getCurrentSessionUser();
     audit.logAudit(user?.id || null, 'RESIDENT_CREATED', `Created resident: ${data.first_name} ${data.last_name}`);
-    return id;
+    return { id };
   });
 
-  ipcMain.handle('db:residents:update', async (_event, id: number, data) => {
-    residents.updateResident(id, data);
+  ipcMain.handle('db:residents:update', async (_event, id: number, data, expectedVersion?: number) => {
+    const result = residents.updateResident(id, data, expectedVersion);
+    if (result.conflict) {
+      return { success: false, conflict: true, current: result.current };
+    }
     const user = getCurrentSessionUser();
     audit.logAudit(user?.id || null, 'RESIDENT_UPDATED', `Updated resident ID: ${id}`);
     return { success: true };
@@ -420,6 +431,66 @@ export function registerDatabaseHandlers(): void {
   ipcMain.handle('db:outsiders:delete', async (_event, id: number) => {
     businesses.deleteOutsideOwner(id);
     return { success: true };
+  });
+
+  // === Mobile API clients (per-device keys) — admin only ===
+  ipcMain.handle('db:apiclients:list', async () => {
+    requireAdmin();
+    return apiClients.listApiClients();
+  });
+  ipcMain.handle('db:apiclients:create', async (_event, name: string) => {
+    const user = requireAdmin();
+    const created = apiClients.createApiClient(name);
+    audit.logAudit(user!.id, 'API_CLIENT_CREATED', `Issued mobile device key: ${name}`);
+    return created; // { id, token } — token shown once
+  });
+  ipcMain.handle('db:apiclients:setActive', async (_event, id: number, active: boolean) => {
+    requireAdmin();
+    apiClients.setApiClientActive(id, active);
+    return { success: true };
+  });
+  ipcMain.handle('db:apiclients:delete', async (_event, id: number) => {
+    const user = requireAdmin();
+    apiClients.deleteApiClient(id);
+    audit.logAudit(user!.id, 'API_CLIENT_DELETED', `Revoked mobile device key #${id}`);
+    return { success: true };
+  });
+
+  // === Mobile App: dynamic roles (admin only) ===
+  ipcMain.handle('db:approles:list', async () => { requireAdmin(); return appAuth.listRoles(); });
+  ipcMain.handle('db:approles:create', async (_event, name: string, perms: any) => {
+    const u = requireAdmin();
+    const id = appAuth.createRole(name, perms);
+    audit.logAudit(u!.id, 'APP_ROLE_CREATED', `Created app role: ${name}`);
+    return id;
+  });
+  ipcMain.handle('db:approles:update', async (_event, id: number, data: any) => {
+    requireAdmin(); appAuth.updateRole(id, data); return { success: true };
+  });
+  ipcMain.handle('db:approles:delete', async (_event, id: number) => {
+    requireAdmin(); return appAuth.deleteRole(id);
+  });
+
+  // === Mobile App: users (admin only; passwords are revealable) ===
+  ipcMain.handle('db:appusers:list', async () => { requireAdmin(); return appAuth.listAppUsers(); });
+  ipcMain.handle('db:appusers:create', async (_event, data: any) => {
+    const u = requireAdmin();
+    const id = appAuth.createAppUser(data);
+    audit.logAudit(u!.id, 'APP_USER_CREATED', `Created mobile user: ${data.username}`);
+    return id;
+  });
+  ipcMain.handle('db:appusers:update', async (_event, id: number, data: any) => {
+    requireAdmin(); appAuth.updateAppUser(id, data); return { success: true };
+  });
+  ipcMain.handle('db:appusers:delete', async (_event, id: number) => {
+    const u = requireAdmin(); appAuth.deleteAppUser(id);
+    audit.logAudit(u!.id, 'APP_USER_DELETED', `Deleted mobile user #${id}`);
+    return { success: true };
+  });
+  ipcMain.handle('db:appusers:revealPassword', async (_event, id: number) => {
+    const u = requireAdmin();
+    audit.logAudit(u!.id, 'APP_USER_PASSWORD_VIEWED', `Viewed password for mobile user #${id}`);
+    return appAuth.revealAppUserPassword(id);
   });
 
   // === Audit ===

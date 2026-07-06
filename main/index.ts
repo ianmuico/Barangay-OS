@@ -7,9 +7,13 @@ import { registerDatabaseHandlers } from './ipc/database';
 import { registerBackupHandlers } from './ipc/backup';
 import { registerReportHandlers } from './ipc/reports';
 import { registerServerHandlers } from './ipc/server';
+import { registerAIHandlers } from './ipc/ai';
+import { registerExcelHandlers } from './ipc/excel';
+import { registerPresenceHandlers } from './ipc/presence';
 import { initLogger } from './utils/logger';
 import { trackEvent } from './database/queries/analytics';
 import { initAutoUpdater } from './utils/updater';
+import { stopTunnel } from './utils/tunnel';
 import { pathToFileURL } from 'url';
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -165,7 +169,8 @@ function createWindow() {
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:3000');
+    // Port is chosen dynamically by scripts/dev.js and passed via NEXT_DEV_URL
+    mainWindow.loadURL(process.env.NEXT_DEV_URL || 'http://localhost:3000');
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadURL('app://host/index.html');
@@ -249,7 +254,10 @@ app.whenReady().then(() => {
   registerDatabaseHandlers();
   registerBackupHandlers();
   registerReportHandlers();
+  registerExcelHandlers();
+  registerPresenceHandlers();
   registerServerHandlers();
+  registerAIHandlers();
   createWindow();
 
   // Initialize auto-updater (only in production)
@@ -269,4 +277,9 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  // Don't leave a cloudflared child running after the app closes
+  stopTunnel();
 });

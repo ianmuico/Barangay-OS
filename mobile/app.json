@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Barangay Mobile",
+    "slug": "barangay-mobile",
+    "scheme": "barangaymobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#1e3a5f"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "android": {
+      "package": "ph.barangay.mobile",
+      "permissions": ["CAMERA", "INTERNET"]
+    },
+    "ios": {
+      "bundleIdentifier": "ph.barangay.mobile",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scan a resident's QR code to open their profile.",
+        "NSAppTransportSecurity": { "NSAllowsArbitraryLoads": true }
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      ["expo-camera", { "cameraPermission": "Scan a resident's QR code to open their profile." }],
+      ["expo-build-properties", { "android": { "usesCleartextTraffic": true } }]
+    ]
+  }
+}

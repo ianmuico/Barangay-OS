@@ -50,6 +50,7 @@ export interface Resident {
   age?: number;
   case_count?: number;
   open_issues?: number;
+  row_version?: number;
 }
 
 export interface ResidentData {
@@ -243,6 +244,12 @@ export interface ServerStatus {
   url?: string;
 }
 
+export interface TunnelState {
+  status: 'stopped' | 'downloading' | 'starting' | 'running' | 'error';
+  url: string | null;
+  error: string | null;
+}
+
 export interface TreeResident {
   id: number;
   first_name: string;
@@ -278,6 +285,30 @@ export interface DocumentListItem {
   business_name: string | null;
   size_bytes: number;
   generated_at: string;
+}
+
+export interface RolePerms { search: boolean; read: boolean; create: boolean; delete: boolean; }
+export interface AppRole {
+  id: number; name: string;
+  perm_search: number; perm_read: number; perm_create: number; perm_delete: number;
+  is_system: number; created_at: string;
+}
+export interface AppUser {
+  id: number; username: string; full_name: string | null;
+  role_id: number | null; role_name?: string | null;
+  is_active: number; created_at: string; last_login: string | null;
+}
+
+export interface PresenceEntry {
+  key: string;
+  entity: string;
+  id: string;
+  action: string;
+  who: string;
+  label?: string;
+  sessionId: string;
+  since: number;
+  lastBeat: number;
 }
 
 export interface GeneratedReport {
@@ -419,8 +450,8 @@ export interface ElectronAPI {
   getResidents: (params: ResidentListParams) => Promise<PaginatedResult<Resident>>;
   getResident: (id: number) => Promise<Resident | null>;
   searchResidents: (query: string, limit?: number) => Promise<Resident[]>;
-  createResident: (data: ResidentData) => Promise<number>;
-  updateResident: (id: number, data: Partial<ResidentData>) => Promise<{ success: boolean }>;
+  createResident: (data: ResidentData & { force?: boolean }) => Promise<{ id?: number; duplicate?: { id: number; first_name: string; last_name: string; birth_date: string; purok: string | null } }>;
+  updateResident: (id: number, data: Partial<ResidentData>, expectedVersion?: number) => Promise<{ success: boolean; conflict?: boolean; current?: Resident }>;
   deleteResident: (id: number) => Promise<{ success: boolean }>;
   linkPartner: (residentId: number, partnerId: number) => Promise<{ success: boolean }>;
   unlinkPartner: (residentId: number) => Promise<{ success: boolean }>;
@@ -501,6 +532,9 @@ export interface ElectronAPI {
   importCSV: (options: { filePath: string; mapping: Record<string, string>; dateFormat: string; skipDuplicates: boolean }) => Promise<ImportResult>;
   rollbackImport: (batchId: number) => Promise<{ success: boolean; deletedCount?: number; error?: string }>;
   downloadCSVTemplate: () => Promise<{ success: boolean; path?: string }>;
+  downloadExcelTemplate: (includeExisting?: boolean) => Promise<{ success: boolean; path?: string; error?: string }>;
+  readExcelFile: (filePath: string) => Promise<{ success: boolean; rows?: Record<string, string>[]; count?: number; error?: string }>;
+  importExcel: (rows: Record<string, string>[], skipDuplicates: boolean) => Promise<{ success: boolean; batchId?: number; totalImported?: number; totalSkipped?: number; totalErrors?: number; errors?: { row: number; field: string; message: string }[]; duplicates?: unknown[]; error?: string }>;
   exportResidents: (params: { is_senior?: boolean; is_youth?: boolean; is_indigent?: boolean; is_4ps?: boolean; status?: string }) => Promise<{ success: boolean; path?: string; error?: string }>;
   listImportBatches: () => Promise<ImportBatch[]>;
 
@@ -520,6 +554,25 @@ export interface ElectronAPI {
   stopServer: () => Promise<{ success: boolean; error?: string }>;
   getServerStatus: () => Promise<ServerStatus>;
   testServer: () => Promise<{ success: boolean; health?: unknown; stats?: unknown; error?: string }>;
+  startTunnel: () => Promise<TunnelState>;
+  stopTunnel: () => Promise<TunnelState>;
+  getTunnelStatus: () => Promise<TunnelState>;
+  listApiClients: () => Promise<{ id: number; name: string; is_active: number; created_at: string; last_seen: string | null }[]>;
+  createApiClient: (name: string) => Promise<{ id: number; token: string }>;
+  setApiClientActive: (id: number, active: boolean) => Promise<{ success: boolean }>;
+  deleteApiClient: (id: number) => Promise<{ success: boolean }>;
+  presenceHeartbeat: (input: { entity: string; id: string; action: string; sessionId: string; label?: string }) => Promise<PresenceEntry[]>;
+  presenceRelease: (sessionId: string) => Promise<{ success: boolean }>;
+  presenceList: () => Promise<PresenceEntry[]>;
+  listAppRoles: () => Promise<AppRole[]>;
+  createAppRole: (name: string, perms: RolePerms) => Promise<number>;
+  updateAppRole: (id: number, data: { name?: string; perms?: RolePerms }) => Promise<{ success: boolean }>;
+  deleteAppRole: (id: number) => Promise<{ success: boolean; error?: string }>;
+  listAppUsers: () => Promise<AppUser[]>;
+  createAppUser: (data: { username: string; full_name?: string | null; password: string; role_id: number | null }) => Promise<number>;
+  updateAppUser: (id: number, data: Partial<{ username: string; full_name: string | null; password: string; role_id: number | null; is_active: number }>) => Promise<{ success: boolean }>;
+  deleteAppUser: (id: number) => Promise<{ success: boolean }>;
+  revealAppUserPassword: (id: number) => Promise<string | null>;
 
   selectFile: (options: FileDialogOptions) => Promise<FileDialogResult>;
   saveFile: (options: FileDialogOptions) => Promise<SaveDialogResult>;
@@ -529,6 +582,12 @@ export interface ElectronAPI {
   removeLogo: () => Promise<boolean>;
   getLogoBase64: () => Promise<string | null>;
   getImageBase64: (imagePath: string) => Promise<string | null>;
+
+  // AI Assistant (template drafting)
+  aiTest: () => Promise<{ success: boolean; model?: string; reply?: string; error?: string }>;
+  aiGenerateTemplate: (payload: { instruction: string; variables: { key: string; label: string }[] }) => Promise<{ success: boolean; html?: string; error?: string }>;
+  aiImproveTemplate: (payload: { instruction: string; currentHtml: string; variables: { key: string; label: string }[] }) => Promise<{ success: boolean; html?: string; error?: string }>;
+  onAIAutoDisabled: (callback: (data: { reason: string }) => void) => () => void;
 }
 
 declare global {

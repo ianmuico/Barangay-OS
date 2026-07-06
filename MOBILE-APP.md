@@ -37,12 +37,41 @@ spotty Wi-Fi, photo capture for residents (needs a new server endpoint — see �
 
 - **Same network only.** The server binds to the LAN; it is not internet-exposed.
   The app must handle "server unreachable" gracefully (desktop off, different Wi-Fi).
-- **Auth** is a single shared API key sent as the `X-API-Key` header on every
-  request (except `/api/health`). There are no per-user accounts on the API yet.
+- **Auth** is an `X-API-Key` header on every request (except `/api/health`). There
+  are now **two kinds of key** (see §2.1):
+  - the **master key** (full access) — for trusted desktop-side integrations, and
+  - **per-device keys** issued to each phone — can search + add, but can only EDIT
+    records that device created. This is the recommended key type for the app.
 - **Rate limit**: 100 requests/minute per device IP → batch and debounce.
 - **CORS**: localhost + private-network origins are allowed, but a native app
   (React Native/Expo) sends no Origin header — CORS does not apply to it.
 - All responses are JSON. Errors: `{ "error": "message" }` with 4xx/5xx status.
+
+### 2.1 Permission model (per-device keys + provenance)
+
+The desktop admin issues a **device key** per phone/account in
+**Settings → Online Mode → Mobile Device Keys** (one-time token, shown once,
+format `bmc_...`). Each device uses its own key. The server enforces:
+
+| Action | Master key | Device key |
+|---|---|---|
+| Search / read residents | ✅ | ✅ |
+| Add a new resident | ✅ | ✅ (record is stamped as created by that device) |
+| Edit a resident | ✅ any record | ✅ **only records that device created** (others → `403`) |
+| Delete a resident | ❌ (desktop only) | ❌ (desktop only) |
+
+So a connected user can browse the whole directory and add people, but **cannot
+change records added by other devices or entered on the desktop** — exactly the
+"can't update others unless created on the same app/account" rule. The desktop
+admin can always correct anything. Each resident row carries `created_via`
+(`desktop`/`mobile`) and `created_by_client` (the device's id) for this check;
+both are returned on resident objects so the app can show/hide its Edit button.
+
+**Client UX:** after fetching a resident, only show "Edit" when the record is
+editable by this device. The simplest signal: try the PUT and handle `403`
+gracefully, OR (better) hide Edit unless `resident.created_by_client` matches
+this device. The app doesn't know its own client id directly, so the pragmatic
+approach is: allow Edit attempts and surface the server's 403 message.
 
 ### Recommended stack
 - **Expo (React Native)** — fastest path; `expo-camera` for QR scanning,
@@ -55,11 +84,14 @@ spotty Wi-Fi, photo capture for residents (needs a new server endpoint — see �
 ## 3. Connecting (first-run flow)
 
 1. On the desktop: **Settings → Online Mode → toggle the server on.** The screen
-   shows the Server URL (e.g. `http://192.168.50.5:3001`) and the API key (UUID).
-2. The phone app's setup screen asks for both. Persist them on the device.
+   shows the Server URL (e.g. `http://192.168.50.5:3001`).
+2. Still on the desktop, under **Mobile Device Keys**, the admin clicks **Issue Key**,
+   names the device (e.g. "Kgwd. Maria's phone"), and gets a one-time `bmc_...` token.
+3. The phone app's setup screen asks for the **Server URL** + that **device key**.
+   Persist them in secure storage.
    - Nice touch: also accept a QR encoding `brgyserver:<url>|<key>` so setup is
      one scan (you'd add that QR to the desktop's Online Mode page later — not built yet).
-3. Verify with `GET {url}/api/health` (no key needed):
+4. Verify with `GET {url}/api/health` (no key needed):
 
 ```json
 { "status": "ok", "version": "1.0.0", "barangay": "Barangay San Isidro", "timestamp": "..." }
@@ -85,6 +117,42 @@ All endpoints except `/api/health` require header `X-API-Key: <key>`.
 | PUT | `/api/residents/:id` | Partial update — send only changed fields. Returns the updated record. |
 | GET | `/api/households` | All households. |
 | GET | `/api/officials` | Officials with `name`, `position`; `?active=true` for current only. |
+| POST | `/api/presence` | Heartbeat "I'm editing X" — body `{ entity, id, action, sessionId, label }`. Returns `{ others: [...] }` (other live actors on the same record). |
+| GET | `/api/presence` | All live activity right now (who is adding/editing what). |
+
+### Concurrency & duplicates (important for multi-device use)
+
+Several phones + the desktop all write to one database, so the API enforces:
+
+**Duplicate guard on create.** `POST /api/residents` rejects an obvious duplicate
+(same first name + last name + birth date) with **`409`** and the existing match:
+```json
+{ "error": "A resident with this name and birth date already exists.",
+  "existing": { "id": 1234, "first_name": "...", "last_name": "...", "birth_date": "..." } }
+```
+Show the user the existing person. If they confirm it's genuinely a different
+person, resend the POST with `"force": true`.
+
+**Optimistic locking on edit.** Every resident has a `row_version` (returned on
+every resident object). Send it back on `PUT /api/residents/:id`:
+```json
+{ "occupation": "Farmer", "row_version": 7 }
+```
+If someone else changed the record first, you get **`409`** with the latest copy:
+```json
+{ "error": "This record was changed by someone else. Reload before editing.",
+  "current": { ...latest resident, "row_version": 8 } }
+```
+Show "reload", replace your copy with `current`, let the user re-apply. If you
+omit `row_version`, the edit goes through unguarded (don't — always send it).
+
+**Presence (so people don't collide).** Before/while editing, POST a heartbeat
+every ~10s with a stable per-session `sessionId` (generate one when the edit
+screen opens) and a human `label` (the person's name). The response's `others`
+array tells you if someone else is already on this record — show a banner like
+"Maria is editing this person right now." The desktop dashboard shows the same
+live list, so the office can see all activity. Entries auto-expire ~30s after
+the last heartbeat, so you don't strictly need to call anything on close.
 
 **Not available over the API (by design):** deleting residents, users/auth,
 templates/documents, backups. Those remain desktop-only.

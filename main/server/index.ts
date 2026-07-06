@@ -5,6 +5,9 @@ import { residentsRouter } from './routes/residents';
 import { healthRouter } from './routes/health';
 import { officialsRouter } from './routes/officials';
 import { statsRouter } from './routes/stats';
+import { presenceRouter } from './routes/presence';
+import { appAuthRouter } from './routes/app';
+import { appUserAuth } from './middleware/appUser';
 
 // The server listens on 0.0.0.0 so other devices on the LAN can reach it.
 // Allow browser requests from localhost and private-network origins; everything
@@ -23,7 +26,7 @@ export function createExpressApp(): express.Application {
         callback(new Error('Not allowed by CORS'));
       }
     },
-    allowedHeaders: ['Content-Type', 'X-API-Key'],
+    allowedHeaders: ['Content-Type', 'X-API-Key', 'X-User-Token'],
   }));
 
   app.use(express.json({ limit: '1mb' }));
@@ -31,7 +34,10 @@ export function createExpressApp(): express.Application {
   // Rate limiting: simple in-memory tracker
   const requestCounts = new Map<string, { count: number; resetAt: number }>();
   app.use((req, res, next) => {
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    // Behind the Cloudflare tunnel every request arrives from localhost, so
+    // key the limiter on the real client IP that Cloudflare forwards.
+    const ip = (req.headers['cf-connecting-ip'] as string)
+      || req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
 
     // Prune expired entries so the map can't grow unbounded
@@ -66,11 +72,14 @@ export function createExpressApp(): express.Application {
   });
 
   app.use(apiKeyAuth);
+  app.use(appUserAuth);
 
   app.use('/api', healthRouter);
   app.use('/api', residentsRouter);
   app.use('/api', officialsRouter);
   app.use('/api', statsRouter);
+  app.use('/api', presenceRouter);
+  app.use('/api', appAuthRouter);
 
   return app;
 }
