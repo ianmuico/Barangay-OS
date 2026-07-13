@@ -12,6 +12,7 @@ export interface Resident {
   civil_status: string;
   address: string;
   purok: string | null;
+  birth_place: string | null;
   contact_number: string | null;
   email: string | null;
   occupation: string | null;
@@ -20,6 +21,7 @@ export interface Resident {
   blood_type: string | null;
   photo_path: string | null;
   household_id: number | null;
+  relationship_to_head?: string | null;
   partner_id: number | null;
   mother_id: number | null;
   father_id: number | null;
@@ -29,6 +31,16 @@ export interface Resident {
   philsys_card_no: string | null;
   educational_attainment: string | null;
   is_4ps: number;
+  is_solo_parent?: number;
+  is_osy?: number;
+  is_ofw?: number;
+  is_ip?: number;
+  ethnicity?: string | null;
+  labor_force_status?: string | null;
+  residency_status?: string | null;
+  residency_start_date?: string | null;
+  disability_type?: string | null;
+  pwd_id_no?: string | null;
   status: string;
   import_batch_id: number | null;
   resident_uid?: string | null;
@@ -46,6 +58,12 @@ export interface ResidentQueryParams {
   is_senior?: boolean;
   is_youth?: boolean;
   is_4ps?: boolean;
+  is_pwd?: boolean;
+  is_solo_parent?: boolean;
+  is_osy?: boolean;
+  is_ofw?: boolean;
+  is_ip?: boolean;
+  household_id?: number;
   gender?: string;
   status?: string; // 'living' | 'deceased' | 'all' — defaults to 'living'
 }
@@ -114,6 +132,27 @@ export function listResidents(params: ResidentQueryParams = {}): PaginatedResult
 
   if ((params as any).is_pwd) {
     conditions.push('is_pwd = 1');
+  }
+
+  if ((params as any).is_solo_parent) {
+    conditions.push('is_solo_parent = 1');
+  }
+
+  if ((params as any).is_osy) {
+    conditions.push('is_osy = 1');
+  }
+
+  if ((params as any).is_ofw) {
+    conditions.push('is_ofw = 1');
+  }
+
+  if ((params as any).is_ip) {
+    conditions.push('is_ip = 1');
+  }
+
+  if ((params as any).household_id) {
+    conditions.push('household_id = ?');
+    values.push((params as any).household_id);
   }
 
   if (is_senior) {
@@ -224,22 +263,29 @@ export function createResident(data: Partial<Resident> & { first_name: string; l
   const result = db.prepare(`
     INSERT INTO residents (
       first_name, middle_name, last_name, suffix, birth_date, gender,
-      civil_status, address, purok, contact_number, email, occupation,
+      civil_status, address, purok, birth_place, contact_number, email, occupation,
       is_indigent, voter_status, blood_type, photo_path, household_id,
       partner_id, mother_id, father_id, notes,
       religion, citizenship, philsys_card_no, educational_attainment,
-      is_4ps, status, import_batch_id, resident_uid, is_pwd, pwd_note, created_via, created_by_client
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_4ps, status, import_batch_id, resident_uid, is_pwd, pwd_note,
+      is_solo_parent, is_osy, is_ofw, is_ip, ethnicity, labor_force_status,
+      residency_status, residency_start_date, disability_type, pwd_id_no,
+      created_via, created_by_client
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.first_name, data.middle_name || null, data.last_name, data.suffix || null,
     data.birth_date, data.gender, data.civil_status, data.address || '',
-    data.purok || null, data.contact_number || null, data.email || null, data.occupation || null,
+    data.purok || null, data.birth_place || null, data.contact_number || null, data.email || null, data.occupation || null,
     data.is_indigent || 0, data.voter_status || 'Not Registered', data.blood_type || null,
     data.photo_path || null, data.household_id || null, data.partner_id || null,
     data.mother_id || null, data.father_id || null, data.notes || null,
     data.religion || null, data.citizenship || 'Filipino', data.philsys_card_no || null,
     data.educational_attainment || null, data.is_4ps || 0, data.status || 'living',
     data.import_batch_id || null, uuidv4(), (data as any).is_pwd || 0, (data as any).pwd_note || null,
+    (data as any).is_solo_parent || 0, (data as any).is_osy || 0, (data as any).is_ofw || 0, (data as any).is_ip || 0,
+    (data as any).ethnicity || null, (data as any).labor_force_status || null,
+    (data as any).residency_status || null, (data as any).residency_start_date || null,
+    (data as any).disability_type || null, (data as any).pwd_id_no || null,
     (data as any).created_via || 'desktop', (data as any).created_by_client ?? null
   );
   const newId = result.lastInsertRowid as number;
@@ -283,11 +329,13 @@ export function updateResident(id: number, data: Partial<Resident>, expectedVers
 
   const allowedFields = [
     'first_name', 'middle_name', 'last_name', 'suffix', 'birth_date',
-    'gender', 'civil_status', 'address', 'purok', 'contact_number', 'email',
+    'gender', 'civil_status', 'address', 'purok', 'birth_place', 'contact_number', 'email',
     'occupation', 'is_indigent', 'voter_status', 'blood_type',
-    'photo_path', 'household_id', 'partner_id', 'mother_id', 'father_id', 'notes',
+    'photo_path', 'household_id', 'relationship_to_head', 'partner_id', 'mother_id', 'father_id', 'notes',
     'religion', 'citizenship', 'philsys_card_no', 'educational_attainment',
-    'is_4ps', 'status', 'import_batch_id', 'death_date', 'is_pwd', 'pwd_note'
+    'is_4ps', 'status', 'import_batch_id', 'death_date', 'is_pwd', 'pwd_note',
+    'is_solo_parent', 'is_osy', 'is_ofw', 'is_ip', 'ethnicity', 'labor_force_status',
+    'residency_status', 'residency_start_date', 'disability_type', 'pwd_id_no'
   ];
 
   for (const [key, value] of Object.entries(data)) {
@@ -358,6 +406,26 @@ export function getYouthCount(): number {
 export function get4PsCount(): number {
   const db = getDb();
   return (db.prepare("SELECT COUNT(*) as count FROM residents WHERE status = 'living' AND is_4ps = 1").get() as { count: number }).count;
+}
+
+export function getSoloParentCount(): number {
+  const db = getDb();
+  return (db.prepare("SELECT COUNT(*) as n FROM residents WHERE status = 'living' AND is_solo_parent = 1").get() as { n: number }).n;
+}
+
+export function getOsyCount(): number {
+  const db = getDb();
+  return (db.prepare("SELECT COUNT(*) as n FROM residents WHERE status = 'living' AND is_osy = 1").get() as { n: number }).n;
+}
+
+export function getOfwCount(): number {
+  const db = getDb();
+  return (db.prepare("SELECT COUNT(*) as n FROM residents WHERE status = 'living' AND is_ofw = 1").get() as { n: number }).n;
+}
+
+export function getIpCount(): number {
+  const db = getDb();
+  return (db.prepare("SELECT COUNT(*) as n FROM residents WHERE status = 'living' AND is_ip = 1").get() as { n: number }).n;
 }
 
 export function getPartnerRelationships(): any[] {
@@ -517,6 +585,41 @@ export function getAgeDistribution(): { bracket: string; count: number }[] {
     GROUP BY bracket
     ORDER BY bracket
   `).all() as any[];
+}
+
+// Population pyramid: age brackets split by sex (living residents).
+export function getPopulationPyramid(): { bracket: string; male: number; female: number }[] {
+  const db = getDb();
+  return db.prepare(`
+    SELECT bracket,
+      SUM(CASE WHEN gender = 'Male' THEN 1 ELSE 0 END) as male,
+      SUM(CASE WHEN gender = 'Female' THEN 1 ELSE 0 END) as female
+    FROM (
+      SELECT gender,
+        CASE
+          WHEN age <= 14 THEN '0-14'
+          WHEN age <= 24 THEN '15-24'
+          WHEN age <= 34 THEN '25-34'
+          WHEN age <= 44 THEN '35-44'
+          WHEN age <= 54 THEN '45-54'
+          WHEN age <= 64 THEN '55-64'
+          ELSE '65+'
+        END as bracket
+      FROM (
+        SELECT gender, CAST((julianday('now') - julianday(birth_date)) / 365.25 AS INTEGER) as age
+        FROM residents WHERE status = 'living'
+      )
+    )
+    GROUP BY bracket
+  `).all() as { bracket: string; male: number; female: number }[];
+}
+
+// New-resident registrations per month for the last 12 months (trend line).
+export function getMonthlyRegistrations(): { month: string; count: number }[] {
+  const db = getDb();
+  return db.prepare(
+    "SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count FROM residents WHERE created_at >= date('now', '-12 months') GROUP BY month ORDER BY month ASC"
+  ).all() as { month: string; count: number }[];
 }
 
 export function getAllResidentsForTree(): any[] {

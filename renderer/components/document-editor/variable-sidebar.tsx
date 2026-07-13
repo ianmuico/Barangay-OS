@@ -12,9 +12,10 @@ import type { ChipKind } from './extensions';
 
 const RESIDENT_KEYS = new Set([
   'fullName', 'firstName', 'middleName', 'lastName', 'suffix', 'middleInitial',
-  'purok', 'address', 'birthDate', 'age', 'gender', 'civilStatus', 'contactNumber',
+  'purok', 'address', 'birthDate', 'birthPlace', 'age', 'gender', 'civilStatus', 'contactNumber',
   'email', 'occupation', 'voterStatus', 'bloodType', 'partnerName', 'religion',
   'citizenship', 'philsysCardNo', 'educationalAttainment',
+  'ethnicity', 'laborForceStatus', 'residencyStatus', 'disabilityType', 'pwdIdNo',
 ]);
 const BARANGAY_KEYS = new Set(['barangay', 'barangayAddress', 'municipality', 'province']);
 const BUSINESS_KEYS = new Set(['businessName', 'businessNature', 'businessAddress', 'businessPurok', 'businessOwners', 'businessStatus', 'businessDateRegistered']);

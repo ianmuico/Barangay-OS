@@ -22,6 +22,7 @@ export interface Resident {
   civil_status: string;
   address: string;
   purok: string | null;
+  birth_place: string | null;
   contact_number: string | null;
   email: string | null;
   occupation: string | null;
@@ -30,6 +31,7 @@ export interface Resident {
   blood_type: string | null;
   photo_path: string | null;
   household_id: number | null;
+  relationship_to_head?: string | null;
   partner_id: number | null;
   mother_id: number | null;
   father_id: number | null;
@@ -42,6 +44,16 @@ export interface Resident {
   is_4ps: number;
   is_pwd?: number;
   pwd_note?: string | null;
+  is_solo_parent?: number;
+  is_osy?: number;
+  is_ofw?: number;
+  is_ip?: number;
+  ethnicity?: string | null;
+  labor_force_status?: string | null;
+  residency_status?: string | null;
+  residency_start_date?: string | null;
+  disability_type?: string | null;
+  pwd_id_no?: string | null;
   status: string;
   death_date?: string | null;
   resident_uid?: string | null;
@@ -63,6 +75,7 @@ export interface ResidentData {
   civil_status: string;
   address?: string;
   purok?: string | null;
+  birth_place?: string | null;
   contact_number?: string | null;
   email?: string | null;
   occupation?: string | null;
@@ -71,6 +84,7 @@ export interface ResidentData {
   blood_type?: string | null;
   photo_path?: string | null;
   household_id?: number | null;
+  relationship_to_head?: string | null;
   partner_id?: number | null;
   mother_id?: number | null;
   father_id?: number | null;
@@ -82,6 +96,16 @@ export interface ResidentData {
   is_4ps?: number;
   is_pwd?: number;
   pwd_note?: string | null;
+  is_solo_parent?: number;
+  is_osy?: number;
+  is_ofw?: number;
+  is_ip?: number;
+  ethnicity?: string | null;
+  labor_force_status?: string | null;
+  residency_status?: string | null;
+  residency_start_date?: string | null;
+  disability_type?: string | null;
+  pwd_id_no?: string | null;
   status?: string;
   death_date?: string | null;
 }
@@ -97,6 +121,10 @@ export interface ResidentListParams {
   is_youth?: boolean;
   is_4ps?: boolean;
   is_pwd?: boolean;
+  is_solo_parent?: boolean;
+  is_osy?: boolean;
+  is_ofw?: boolean;
+  is_ip?: boolean;
   gender?: string;
   status?: string; // 'living' | 'deceased' | 'all'
 }
@@ -105,12 +133,21 @@ export interface Household {
   id: number;
   household_number: string | null;
   address: string;
+  purok: string | null;
+  housing_type: string | null;
+  head_resident_id: number | null;
+  household_uid: string | null;
   created_at: string;
+  head_name?: string | null;
+  member_count?: number;
 }
 
 export interface HouseholdData {
   household_number?: string | null;
   address: string;
+  purok?: string | null;
+  housing_type?: string | null;
+  head_resident_id?: number | null;
 }
 
 export interface ReportTemplate {
@@ -283,8 +320,73 @@ export interface DocumentListItem {
   case_number: string | null;
   business_id: number | null;
   business_name: string | null;
+  control_number: string | null;
+  voided: number;
   size_bytes: number;
   generated_at: string;
+}
+
+export interface Issuance {
+  id: number;
+  issuance_uid: string | null;
+  type: 'ordinance' | 'resolution' | 'executive_order';
+  reference_no: string | null;
+  title: string;
+  date_enacted: string | null;
+  author: string | null;
+  status: string;
+  full_text: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BlotterEntry {
+  id: number;
+  blotter_uid: string | null;
+  entry_no: string | null;
+  category: string;
+  incident_date: string | null;
+  incident_time: string | null;
+  location: string | null;
+  reported_by: string | null;
+  respondent: string | null;
+  narrative: string | null;
+  action_taken: string | null;
+  status: string;
+  is_vawc: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Asset {
+  id: number; asset_uid: string | null; item_name: string; category: string | null; description: string | null;
+  acquisition_date: string | null; acquisition_cost: number | null; quantity: number | null; unit: string | null;
+  location: string | null; condition: string | null; custodian: string | null; notes: string | null;
+  created_at: string; updated_at: string;
+}
+export interface FinancialRecord {
+  id: number; fiscal_year: number | null; category: string; account: string | null; description: string | null;
+  amount: number | null; entry_date: string | null; reference_no: string | null; notes: string | null;
+  created_at: string; updated_at: string;
+}
+export interface DevelopmentProject {
+  id: number; project_name: string; sector: string | null; description: string | null; budget: number | null;
+  funding_source: string | null; status: string; start_date: string | null; target_date: string | null;
+  notes: string | null; created_at: string; updated_at: string;
+}
+export interface GadEntry {
+  id: number; fiscal_year: number | null; program: string; activity: string | null; budget_amount: number | null;
+  gad_amount: number | null; status: string; accomplishment: string | null; notes: string | null;
+  created_at: string; updated_at: string;
+}
+export interface DisasterRecord {
+  id: number; record_type: string; title: string; record_date: string | null; location: string | null;
+  description: string | null; status: string | null; notes: string | null; created_at: string; updated_at: string;
+}
+export interface Institution {
+  id: number; name: string; type: string | null; head_name: string | null; contact: string | null;
+  members_count: number | null; description: string | null; notes: string | null; created_at: string; updated_at: string;
 }
 
 export interface RolePerms { search: boolean; read: boolean; create: boolean; delete: boolean; }
@@ -359,10 +461,15 @@ export interface Business {
   purok: string | null;
   status: 'active' | 'closed';
   date_registered: string | null;
+  permit_number: string | null;
+  permit_issued_date: string | null;
+  permit_expiry_date: string | null;
+  permit_fee: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
   owner_names?: string;
+  permit_state?: 'valid' | 'expiring' | 'expired' | null;
 }
 
 export interface BusinessOwner {
@@ -462,9 +569,55 @@ export interface ElectronAPI {
   getPartnerRelationships: () => Promise<PartnerRelationship[]>;
 
   getHouseholds: (params?: { search?: string; page?: number; limit?: number }) => Promise<Household[]>;
+  getHousehold: (id: number) => Promise<Household | undefined>;
+  getHouseholdMembers: (id: number) => Promise<Resident[]>;
   createHousehold: (data: HouseholdData) => Promise<number>;
   updateHousehold: (id: number, data: Partial<HouseholdData>) => Promise<{ success: boolean }>;
   deleteHousehold: (id: number) => Promise<{ success: boolean }>;
+  addHouseholdMember: (householdId: number, residentId: number, relationship?: string) => Promise<{ success: boolean }>;
+  removeHouseholdMember: (residentId: number) => Promise<{ success: boolean }>;
+  setHouseholdHead: (householdId: number, residentId: number) => Promise<{ success: boolean }>;
+  getIssuances: (params?: { search?: string; type?: string }) => Promise<Issuance[]>;
+  getIssuance: (id: number) => Promise<Issuance | undefined>;
+  createIssuance: (data: Partial<Issuance> & { title: string }) => Promise<number>;
+  updateIssuance: (id: number, data: Partial<Issuance>) => Promise<{ success: boolean }>;
+  deleteIssuance: (id: number) => Promise<{ success: boolean }>;
+  getBlotter: (params?: { search?: string; category?: string }) => Promise<BlotterEntry[]>;
+  getBlotterEntry: (id: number) => Promise<BlotterEntry | undefined>;
+  createBlotter: (data: Partial<BlotterEntry>) => Promise<number>;
+  updateBlotter: (id: number, data: Partial<BlotterEntry>) => Promise<{ success: boolean }>;
+  deleteBlotter: (id: number) => Promise<{ success: boolean }>;
+  getAssets: (p?: { search?: string; category?: string }) => Promise<Asset[]>;
+  getAsset: (id: number) => Promise<Asset | undefined>;
+  createAsset: (d: Partial<Asset> & { item_name: string }) => Promise<number>;
+  updateAsset: (id: number, d: Partial<Asset>) => Promise<{ success: boolean }>;
+  deleteAsset: (id: number) => Promise<{ success: boolean }>;
+  getFinance: (p?: { search?: string; category?: string }) => Promise<FinancialRecord[]>;
+  getFinanceRecord: (id: number) => Promise<FinancialRecord | undefined>;
+  createFinance: (d: Partial<FinancialRecord>) => Promise<number>;
+  updateFinance: (id: number, d: Partial<FinancialRecord>) => Promise<{ success: boolean }>;
+  deleteFinance: (id: number) => Promise<{ success: boolean }>;
+  financeSummary: (year?: number) => Promise<{ category: string; total: number }[]>;
+  getProjects: (p?: { search?: string; status?: string }) => Promise<DevelopmentProject[]>;
+  getProject: (id: number) => Promise<DevelopmentProject | undefined>;
+  createProject: (d: Partial<DevelopmentProject> & { project_name: string }) => Promise<number>;
+  updateProject: (id: number, d: Partial<DevelopmentProject>) => Promise<{ success: boolean }>;
+  deleteProject: (id: number) => Promise<{ success: boolean }>;
+  getGad: (p?: { search?: string; status?: string }) => Promise<GadEntry[]>;
+  getGadEntry: (id: number) => Promise<GadEntry | undefined>;
+  createGad: (d: Partial<GadEntry> & { program: string }) => Promise<number>;
+  updateGad: (id: number, d: Partial<GadEntry>) => Promise<{ success: boolean }>;
+  deleteGad: (id: number) => Promise<{ success: boolean }>;
+  getDisaster: (p?: { search?: string; record_type?: string }) => Promise<DisasterRecord[]>;
+  getDisasterRecord: (id: number) => Promise<DisasterRecord | undefined>;
+  createDisaster: (d: Partial<DisasterRecord> & { title: string }) => Promise<number>;
+  updateDisaster: (id: number, d: Partial<DisasterRecord>) => Promise<{ success: boolean }>;
+  deleteDisaster: (id: number) => Promise<{ success: boolean }>;
+  getInstitutions: (p?: { search?: string; type?: string }) => Promise<Institution[]>;
+  getInstitution: (id: number) => Promise<Institution | undefined>;
+  createInstitution: (d: Partial<Institution> & { name: string }) => Promise<number>;
+  updateInstitution: (id: number, d: Partial<Institution>) => Promise<{ success: boolean }>;
+  deleteInstitution: (id: number) => Promise<{ success: boolean }>;
 
   getTemplates: () => Promise<ReportTemplate[]>;
   getTemplate: (id: number) => Promise<ReportTemplate | null>;
@@ -474,6 +627,11 @@ export interface ElectronAPI {
 
   getInputFields: (templateId: number) => Promise<string[]>;
   generateReport: (templateId: number, residentId: number, inputValues?: Record<string, string>) => Promise<{ success: boolean; html?: string; reportId?: number; paper?: PaperSettings; error?: string }>;
+  generateFormC: (inputValues?: Record<string, string>) => Promise<{ success: boolean; html?: string; paper?: PaperSettings; counts?: Record<string, number>; error?: string }>;
+  exportFormCXlsx: () => Promise<{ success: boolean; path?: string; error?: string }>;
+  analyticsOverview: () => Promise<{ pyramid: { bracket: string; male: number; female: number }[]; monthly: { month: string; count: number }[] }>;
+  bimsValidate: () => Promise<{ total: number; okCount: number; issues: { name: string; missing: string[] }[] }>;
+  bimsExport: () => Promise<{ success: boolean; path?: string; count?: number; error?: string }>;
   exportPDF: (html: string, filename: string, paper?: PaperSettings) => Promise<{ success: boolean; path?: string; error?: string }>;
   printReport: (html: string, paper?: PaperSettings) => Promise<{ success: boolean; error?: string }>;
   generateMultiReport: (templateIds: number[], residentId: number) => Promise<{ success: boolean; reports?: { templateName: string; html: string; paper?: PaperSettings }[]; error?: string }>;
@@ -485,6 +643,7 @@ export interface ElectronAPI {
   saveDocument: (data: { id?: number; case_id?: number | null; resident_id?: number | null; business_id?: number | null; title: string; content_html: string }) => Promise<number>;
   getDocument: (id: number) => Promise<GeneratedReport | undefined>;
   deleteDocument: (id: number) => Promise<{ success: boolean }>;
+  voidDocument: (id: number) => Promise<{ success: boolean }>;
   listDocuments: (params?: { search?: string; type?: 'all' | 'resident' | 'case' | 'business'; page?: number; limit?: number }) => Promise<{ data: DocumentListItem[]; total: number; page: number; totalPages: number }>;
   getCaseDocuments: (caseId: number) => Promise<GeneratedReport[]>;
   getReportStorageStats: () => Promise<{ count: number; totalBytes: number; oldest: string | null }>;

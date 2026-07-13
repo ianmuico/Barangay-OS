@@ -8,6 +8,7 @@ export const TEMPLATE_VARIABLES = [
   { key: 'purok', label: 'Purok', description: 'Purok number/name' },
   { key: 'address', label: 'Address', description: 'Full address' },
   { key: 'birthDate', label: 'Birth Date', description: 'Formatted birth date' },
+  { key: 'birthPlace', label: 'Birth Place', description: 'Place of birth (RBI)' },
   { key: 'age', label: 'Age', description: 'Current age in years' },
   { key: 'gender', label: 'Gender', description: 'Male or Female' },
   { key: 'civilStatus', label: 'Civil Status', description: 'Single, Married, etc.' },
@@ -28,6 +29,11 @@ export const TEMPLATE_VARIABLES = [
   { key: 'citizenship', label: 'Citizenship', description: 'Resident\'s citizenship' },
   { key: 'philsysCardNo', label: 'PhilSys Card No.', description: 'National ID number' },
   { key: 'educationalAttainment', label: 'Educational Attainment', description: 'Highest education level' },
+  { key: 'ethnicity', label: 'Ethnicity', description: 'Indigenous group / ethnicity (RBI)' },
+  { key: 'laborForceStatus', label: 'Labor Force Status', description: 'Employed / Unemployed / Not in labor force' },
+  { key: 'residencyStatus', label: 'Residency Status', description: 'Permanent or Transient' },
+  { key: 'disabilityType', label: 'Disability Type', description: 'Type of disability (PWD)' },
+  { key: 'pwdIdNo', label: 'PWD ID No.', description: 'PWD identification number' },
   // Business variables — fill in automatically for documents created from the Businesses page
   { key: 'businessName', label: 'Business Name', description: 'Name of the business' },
   { key: 'businessNature', label: 'Business Nature', description: 'Nature/type of the business' },
@@ -81,11 +87,16 @@ export const TEMPLATE_PAGES = [
   { key: 'youth', label: 'Youth' },
   { key: 'four-ps', label: '4Ps Beneficiaries' },
   { key: 'pwd', label: 'PWD' },
+  { key: 'solo-parents', label: 'Solo Parents' },
+  { key: 'osy', label: 'Out-of-School Youth' },
+  { key: 'ofw', label: 'OFW' },
+  { key: 'ip', label: 'Indigenous People' },
   { key: 'deceased', label: 'Deceased' },
   { key: 'flagged', label: 'Flagged Residents' },
   { key: 'generator', label: 'Generator' },
   { key: 'cases', label: 'Cases & Summons' },
   { key: 'businesses', label: 'Businesses' },
+  { key: 'reports', label: 'Reports' },
 ];
 
 export function templateVisibleOn(t: { pages_json?: string | null }, pageKey?: string): boolean {

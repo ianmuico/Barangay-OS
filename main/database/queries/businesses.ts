@@ -8,11 +8,16 @@ export interface Business {
   purok: string | null;
   status: 'active' | 'closed';
   date_registered: string | null;
+  permit_number: string | null;
+  permit_issued_date: string | null;
+  permit_expiry_date: string | null;
+  permit_fee: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
   owners?: BusinessOwner[];
   owner_names?: string;
+  permit_state?: 'valid' | 'expiring' | 'expired' | null;
 }
 
 export interface BusinessOwner {
@@ -79,7 +84,13 @@ export function listBusinesses(params?: { search?: string; status?: string }): B
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   return db.prepare(`
-    SELECT b.*, ${OWNER_NAME_SQL}
+    SELECT b.*, ${OWNER_NAME_SQL},
+      CASE
+        WHEN b.permit_expiry_date IS NULL OR b.permit_expiry_date = '' THEN NULL
+        WHEN b.permit_expiry_date < date('now') THEN 'expired'
+        WHEN b.permit_expiry_date <= date('now', '+30 days') THEN 'expiring'
+        ELSE 'valid'
+      END as permit_state
     FROM businesses b
     ${where}
     ORDER BY b.name ASC
@@ -107,10 +118,13 @@ export function createBusiness(data: Partial<Business> & { name: string }, owner
   const db = getDb();
   const tx = db.transaction(() => {
     const result = db.prepare(`
-      INSERT INTO businesses (name, nature, address, purok, status, date_registered, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO businesses (name, nature, address, purok, status, date_registered, notes,
+        permit_number, permit_issued_date, permit_expiry_date, permit_fee)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(data.name, data.nature ?? null, data.address ?? null, data.purok ?? null,
-      data.status || 'active', data.date_registered ?? null, data.notes ?? null);
+      data.status || 'active', data.date_registered ?? null, data.notes ?? null,
+      data.permit_number ?? null, data.permit_issued_date ?? null,
+      data.permit_expiry_date ?? null, data.permit_fee ?? null);
     const id = result.lastInsertRowid as number;
     setOwnersInner(db, id, owners);
     return id;
@@ -123,7 +137,8 @@ export function updateBusiness(id: number, data: Partial<Business>, owners?: Own
   const tx = db.transaction(() => {
     const fields: string[] = [];
     const values: any[] = [];
-    for (const key of ['name', 'nature', 'address', 'purok', 'status', 'date_registered', 'notes'] as const) {
+    for (const key of ['name', 'nature', 'address', 'purok', 'status', 'date_registered', 'notes',
+      'permit_number', 'permit_issued_date', 'permit_expiry_date', 'permit_fee'] as const) {
       if (data[key] !== undefined) { fields.push(`${key} = ?`); values.push(data[key]); }
     }
     if (fields.length) {

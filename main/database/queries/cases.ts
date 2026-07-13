@@ -152,10 +152,13 @@ export function getCaseById(id: number): Case | undefined {
 export function createCase(data: CaseCreateData): number {
   const db = getDb();
 
-  // Auto-generate case_number
+  // Auto-generate case_number. Use MAX(existing suffix)+1 rather than COUNT(*)+1 so that
+  // deleting a case cannot cause the next create to collide with a still-existing number.
   const year = new Date().getFullYear();
-  const countResult = db.prepare("SELECT COUNT(*) as count FROM cases WHERE case_number LIKE ?").get(`${year}-%`) as { count: number };
-  const num = countResult.count + 1;
+  const maxRow = db.prepare(
+    "SELECT MAX(CAST(substr(case_number, 6) AS INTEGER)) as maxn FROM cases WHERE case_number LIKE ?"
+  ).get(`${year}-%`) as { maxn: number | null };
+  const num = (maxRow.maxn || 0) + 1;
   const caseNumber = `${year}-${String(num).padStart(3, '0')}`;
 
   const sql = `
@@ -188,6 +191,8 @@ export function updateCase(id: number, data: CaseUpdateData): { success: boolean
   if (data.filed_date !== undefined) { fields.push('filed_date = ?'); values.push(data.filed_date); }
   if (data.resolved_date !== undefined) { fields.push('resolved_date = ?'); values.push(data.resolved_date); }
   if (data.resolution_notes !== undefined) { fields.push('resolution_notes = ?'); values.push(data.resolution_notes); }
+  if ((data as any).nature !== undefined) { fields.push('nature = ?'); values.push((data as any).nature); }
+  if ((data as any).kp_stage !== undefined) { fields.push('kp_stage = ?'); values.push((data as any).kp_stage); }
 
   if (fields.length === 0) return { success: true };
 

@@ -34,6 +34,7 @@ interface ResidentData {
   blood_type?: string | null;
   photo_path?: string | null;
   household_id?: number | null;
+  relationship_to_head?: string | null;
   partner_id?: number | null;
   mother_id?: number | null;
   father_id?: number | null;
@@ -45,12 +46,25 @@ interface ResidentData {
   is_4ps?: number;
   is_pwd?: number;
   pwd_note?: string | null;
+  is_solo_parent?: number;
+  is_osy?: number;
+  is_ofw?: number;
+  is_ip?: number;
+  ethnicity?: string | null;
+  labor_force_status?: string | null;
+  residency_status?: string | null;
+  residency_start_date?: string | null;
+  disability_type?: string | null;
+  pwd_id_no?: string | null;
   status?: string;
 }
 
 interface HouseholdData {
   household_number?: string | null;
   address: string;
+  purok?: string | null;
+  housing_type?: string | null;
+  head_resident_id?: number | null;
 }
 
 interface TemplateData {
@@ -151,9 +165,61 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Households
   getHouseholds: (params?: { search?: string; page?: number; limit?: number }) => ipcRenderer.invoke('db:households:list', params),
+  getHousehold: (id: number) => ipcRenderer.invoke('db:households:get', id),
+  getHouseholdMembers: (id: number) => ipcRenderer.invoke('db:households:members', id),
   createHousehold: (data: HouseholdData) => ipcRenderer.invoke('db:households:create', data),
   updateHousehold: (id: number, data: Partial<HouseholdData>) => ipcRenderer.invoke('db:households:update', id, data),
   deleteHousehold: (id: number) => ipcRenderer.invoke('db:households:delete', id),
+  addHouseholdMember: (householdId: number, residentId: number, relationship?: string) => ipcRenderer.invoke('db:households:addMember', householdId, residentId, relationship),
+  removeHouseholdMember: (residentId: number) => ipcRenderer.invoke('db:households:removeMember', residentId),
+  setHouseholdHead: (householdId: number, residentId: number) => ipcRenderer.invoke('db:households:setHead', householdId, residentId),
+
+  // Issuances (BORIS)
+  getIssuances: (params?: { search?: string; type?: string }) => ipcRenderer.invoke('db:issuances:list', params),
+  getIssuance: (id: number) => ipcRenderer.invoke('db:issuances:get', id),
+  createIssuance: (data: unknown) => ipcRenderer.invoke('db:issuances:create', data),
+  updateIssuance: (id: number, data: unknown) => ipcRenderer.invoke('db:issuances:update', id, data),
+  deleteIssuance: (id: number) => ipcRenderer.invoke('db:issuances:delete', id),
+
+  // Blotter / VAW desk
+  getBlotter: (params?: { search?: string; category?: string }) => ipcRenderer.invoke('db:blotter:list', params),
+  getBlotterEntry: (id: number) => ipcRenderer.invoke('db:blotter:get', id),
+  createBlotter: (data: unknown) => ipcRenderer.invoke('db:blotter:create', data),
+  updateBlotter: (id: number, data: unknown) => ipcRenderer.invoke('db:blotter:update', id, data),
+  deleteBlotter: (id: number) => ipcRenderer.invoke('db:blotter:delete', id),
+
+  // P2 governance modules
+  getAssets: (p?: { search?: string; category?: string }) => ipcRenderer.invoke('db:assets:list', p),
+  getAsset: (id: number) => ipcRenderer.invoke('db:assets:get', id),
+  createAsset: (d: unknown) => ipcRenderer.invoke('db:assets:create', d),
+  updateAsset: (id: number, d: unknown) => ipcRenderer.invoke('db:assets:update', id, d),
+  deleteAsset: (id: number) => ipcRenderer.invoke('db:assets:delete', id),
+  getFinance: (p?: { search?: string; category?: string }) => ipcRenderer.invoke('db:finance:list', p),
+  getFinanceRecord: (id: number) => ipcRenderer.invoke('db:finance:get', id),
+  createFinance: (d: unknown) => ipcRenderer.invoke('db:finance:create', d),
+  updateFinance: (id: number, d: unknown) => ipcRenderer.invoke('db:finance:update', id, d),
+  deleteFinance: (id: number) => ipcRenderer.invoke('db:finance:delete', id),
+  financeSummary: (year?: number) => ipcRenderer.invoke('db:finance:summary', year),
+  getProjects: (p?: { search?: string; status?: string }) => ipcRenderer.invoke('db:devplan:list', p),
+  getProject: (id: number) => ipcRenderer.invoke('db:devplan:get', id),
+  createProject: (d: unknown) => ipcRenderer.invoke('db:devplan:create', d),
+  updateProject: (id: number, d: unknown) => ipcRenderer.invoke('db:devplan:update', id, d),
+  deleteProject: (id: number) => ipcRenderer.invoke('db:devplan:delete', id),
+  getGad: (p?: { search?: string; status?: string }) => ipcRenderer.invoke('db:gad:list', p),
+  getGadEntry: (id: number) => ipcRenderer.invoke('db:gad:get', id),
+  createGad: (d: unknown) => ipcRenderer.invoke('db:gad:create', d),
+  updateGad: (id: number, d: unknown) => ipcRenderer.invoke('db:gad:update', id, d),
+  deleteGad: (id: number) => ipcRenderer.invoke('db:gad:delete', id),
+  getDisaster: (p?: { search?: string; record_type?: string }) => ipcRenderer.invoke('db:disaster:list', p),
+  getDisasterRecord: (id: number) => ipcRenderer.invoke('db:disaster:get', id),
+  createDisaster: (d: unknown) => ipcRenderer.invoke('db:disaster:create', d),
+  updateDisaster: (id: number, d: unknown) => ipcRenderer.invoke('db:disaster:update', id, d),
+  deleteDisaster: (id: number) => ipcRenderer.invoke('db:disaster:delete', id),
+  getInstitutions: (p?: { search?: string; type?: string }) => ipcRenderer.invoke('db:institutions:list', p),
+  getInstitution: (id: number) => ipcRenderer.invoke('db:institutions:get', id),
+  createInstitution: (d: unknown) => ipcRenderer.invoke('db:institutions:create', d),
+  updateInstitution: (id: number, d: unknown) => ipcRenderer.invoke('db:institutions:update', id, d),
+  deleteInstitution: (id: number) => ipcRenderer.invoke('db:institutions:delete', id),
 
   // Report Templates
   getTemplates: () => ipcRenderer.invoke('db:templates:list'),
@@ -167,6 +233,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('reports:getInputFields', templateId),
   generateReport: (templateId: number, residentId: number, inputValues?: Record<string, string>) =>
     ipcRenderer.invoke('reports:generate', templateId, residentId, inputValues),
+  generateFormC: (inputValues?: Record<string, string>) =>
+    ipcRenderer.invoke('reports:generateFormC', inputValues),
+  exportFormCXlsx: () => ipcRenderer.invoke('reports:exportFormCXlsx'),
+  analyticsOverview: () => ipcRenderer.invoke('db:analytics:overview'),
+  bimsValidate: () => ipcRenderer.invoke('bims:validate'),
+  bimsExport: () => ipcRenderer.invoke('bims:export'),
   exportPDF: (html: string, filename: string, paper?: unknown) =>
     ipcRenderer.invoke('reports:exportPDF', html, filename, paper),
   printReport: (html: string, paper?: unknown) =>
@@ -194,6 +266,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('db:reports:get', id),
   deleteDocument: (id: number) =>
     ipcRenderer.invoke('db:reports:delete', id),
+  voidDocument: (id: number) =>
+    ipcRenderer.invoke('db:reports:void', id),
   listDocuments: (params?: { search?: string; type?: 'all' | 'resident' | 'case' | 'business'; page?: number; limit?: number }) =>
     ipcRenderer.invoke('db:reports:listDocs', params),
   getCaseDocuments: (caseId: number) =>

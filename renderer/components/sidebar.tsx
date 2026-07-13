@@ -9,7 +9,9 @@ import {
   LayoutDashboard, Users, UserCheck, HeartHandshake, Baby,
   GitBranch, FileSearch, FileText, Landmark,
   Settings, Building2, Shield, Database, Wifi, Sparkles, Info,
-  ChevronDown, Loader2, Heart, Archive, Scale, Bell, FolderOpen, Flag, Store, UserPlus, Accessibility, Smartphone } from 'lucide-react';
+  ChevronDown, Loader2, Heart, Archive, Scale, Bell, FolderOpen, Flag, Store, UserPlus, Accessibility, Smartphone,
+  UserRound, GraduationCap, Plane, Mountain, Home, BarChart3, Upload, Gavel, BookText,
+  Boxes, Wallet, ClipboardList, LifeBuoy, Users2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -45,11 +47,16 @@ const navGroups: NavGroup[] = [
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/residents', label: 'Residents', icon: Users },
+      { href: '/households', label: 'Households', icon: Home },
       { href: '/seniors', label: 'Senior Citizens', icon: UserCheck },
       { href: '/indigents', label: 'Indigents', icon: HeartHandshake },
       { href: '/youth', label: 'Youth', icon: Baby },
       { href: '/four-ps', label: '4Ps Beneficiaries', icon: Heart },
       { href: '/pwd', label: 'PWD', icon: Accessibility },
+      { href: '/solo-parents', label: 'Solo Parents', icon: UserRound },
+      { href: '/osy', label: 'Out-of-School Youth', icon: GraduationCap },
+      { href: '/ofw', label: 'OFW', icon: Plane },
+      { href: '/ip', label: 'Indigenous People', icon: Mountain },
       { href: '/family-tree', label: 'Family Tree', icon: GitBranch },
       { href: '/deceased', label: 'Deceased', icon: Archive },
       { href: '/flagged', label: 'Flagged Residents', icon: Flag },
@@ -59,12 +66,32 @@ const navGroups: NavGroup[] = [
     label: 'Documents',
     items: [
       { href: '/cases', label: 'Cases & Summons', icon: Scale },
+      { href: '/blotter', label: 'Blotter & VAW Desk', icon: BookText },
+      { href: '/issuances', label: 'Ordinances & Resolutions', icon: Gavel },
       { href: '/businesses', label: 'Businesses', icon: Store },
       { href: '/outsiders', label: 'Outside Owners', icon: UserPlus },
       { href: '/generator', label: 'Generator', icon: FileSearch },
       { href: '/documents', label: 'Saved Documents', icon: FolderOpen },
       { href: '/templates', label: 'Templates', icon: FileText },
       { href: '/officials', label: 'Officials', icon: Landmark },
+    ],
+  },
+  {
+    label: 'Governance',
+    items: [
+      { href: '/assets', label: 'Assets & Property', icon: Boxes },
+      { href: '/finance', label: 'Financial Records', icon: Wallet },
+      { href: '/development', label: 'Development Plan', icon: ClipboardList },
+      { href: '/gad', label: 'GAD Plan & Budget', icon: HeartHandshake },
+      { href: '/disaster', label: 'Disaster Preparedness', icon: LifeBuoy },
+      { href: '/institutions', label: 'Institutions', icon: Users2 },
+    ],
+  },
+  {
+    label: 'Reports & BIMS',
+    items: [
+      { href: '/reports', label: 'Reports', icon: BarChart3 },
+      { href: '/bims-export', label: 'Export to BIMS', icon: Upload },
     ],
   },
 ];

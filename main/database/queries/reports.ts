@@ -54,12 +54,33 @@ export function createGeneratedReport(data: {
   title?: string | null;
   content_html: string;
   generated_by: number;
+  control_number?: string | null;
 }): number {
   const db = getDb();
   const result = db.prepare(
-    'INSERT INTO generated_reports (template_id, resident_id, case_id, business_id, title, content_html, generated_by) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(data.template_id ?? null, data.resident_id ?? null, data.case_id ?? null, data.business_id ?? null, data.title ?? null, data.content_html, data.generated_by);
+    'INSERT INTO generated_reports (template_id, resident_id, case_id, business_id, title, content_html, generated_by, control_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(data.template_id ?? null, data.resident_id ?? null, data.case_id ?? null, data.business_id ?? null, data.title ?? null, data.content_html, data.generated_by, data.control_number ?? null);
   return result.lastInsertRowid as number;
+}
+
+// Allocate the next per-year control number for a document type (e.g. "Barangay Clearance").
+// Format: YYYY-NNNNN, reset each year. Atomic via a transaction + upsert.
+export function nextControlNumber(docType: string): string {
+  const db = getDb();
+  const year = new Date().getFullYear();
+  const tx = db.transaction(() => {
+    db.prepare('INSERT INTO cert_sequences (doc_type, year, last_no) VALUES (?, ?, 0) ON CONFLICT(doc_type, year) DO NOTHING').run(docType, year);
+    db.prepare('UPDATE cert_sequences SET last_no = last_no + 1 WHERE doc_type = ? AND year = ?').run(docType, year);
+    return (db.prepare('SELECT last_no FROM cert_sequences WHERE doc_type = ? AND year = ?').get(docType, year) as { last_no: number }).last_no;
+  });
+  const n = tx();
+  return `${year}-${String(n).padStart(5, '0')}`;
+}
+
+// Void (soft-cancel) an issued document — kept in the register, marked voided.
+export function voidGeneratedReport(id: number): void {
+  const db = getDb();
+  db.prepare('UPDATE generated_reports SET voided = 1 WHERE id = ?').run(id);
 }
 
 export function getGeneratedReportById(id: number): GeneratedReport | undefined {
@@ -102,6 +123,8 @@ export interface DocumentListItem {
   case_number: string | null;
   business_id: number | null;
   business_name: string | null;
+  control_number: string | null;
+  voided: number;
   size_bytes: number;
   generated_at: string;
 }
@@ -137,6 +160,7 @@ export function listDocuments(params: { search?: string; type?: 'all' | 'residen
       (r.first_name || ' ' || r.last_name) as resident_name,
       gr.case_id, c.case_number,
       gr.business_id, b.name as business_name,
+      gr.control_number, gr.voided,
       LENGTH(gr.content_html) as size_bytes, gr.generated_at
     ${base}
     ORDER BY gr.generated_at DESC
