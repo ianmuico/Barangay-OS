@@ -749,6 +749,18 @@ export interface ElectronAPI {
   aiGenerateTemplate: (payload: { instruction: string; variables: { key: string; label: string }[] }) => Promise<{ success: boolean; html?: string; error?: string }>;
   aiImproveTemplate: (payload: { instruction: string; currentHtml: string; variables: { key: string; label: string }[] }) => Promise<{ success: boolean; html?: string; error?: string }>;
   onAIAutoDisabled: (callback: (data: { reason: string }) => void) => () => void;
+
+  // Software updates
+  checkForUpdates: () => Promise<UpdateCheckResult>;
+  onUpdateProgress: (callback: (percent: number) => void) => () => void;
+}
+
+export interface UpdateCheckResult {
+  success: boolean;
+  current: string;
+  latest?: string;
+  status?: 'checking' | 'up-to-date' | 'downloading' | 'ready';
+  error?: string;
 }
 
 declare global {

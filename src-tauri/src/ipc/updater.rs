@@ -38,11 +38,13 @@ const GH_REPO: &str = "barangay-management";
 // keeps running untouched. So "make sure all files for the update are there" is
 // guaranteed: an incomplete download simply doesn't apply.
 //
-// Resilience (added here): the download runs in the background and, if it fails
-// (dropped Wi-Fi, timeout), we automatically retry with a backoff a few times,
-// re-fetching until a complete, verified file is ready. Only if it still can't
-// finish do we ask the user to try again. The update is applied on restart;
-// nothing is half-installed.
+// Resilience (added here): barangay offices are online only now and then, so the
+// app re-checks every 30 minutes and again the moment the connection comes back
+// (the renderer reports `online` events). A found update downloads silently in
+// the background; a failed download retries with backoff and otherwise waits for
+// the next check — no error popups. The only prompt is "Restart now / Later"
+// once a complete, verified update is ready; "Later" installs it on quit.
+// Nothing is half-installed.
 // ─────────────────────────────────────────────────────────────────────────────
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
@@ -53,6 +55,11 @@ const MAX_DOWNLOAD_RETRIES: u32 = 5;
 
 static CHECK_RETRIES: AtomicU32 = AtomicU32::new(0);
 const MAX_CHECK_RETRIES: u32 = 3;
+
+/// How often a running app looks for a new release.
+const CHECK_INTERVAL: Duration = Duration::from_secs(30 * 60);
+/// A check is in flight (periodic, reconnect and manual checks can overlap).
+static CHECKING: AtomicBool = AtomicBool::new(false);
 
 static TOKEN: OnceLock<Option<String>> = OnceLock::new();
 
@@ -197,26 +204,20 @@ async fn on_update_available(update: Update) {
     log_info(&format!("Update available: {}", update.version));
     CHECK_RETRIES.store(0, Ordering::SeqCst);
 
-    // Already fetching it (e.g. a manual check during a download) — don't prompt twice.
-    if IS_DOWNLOADING.load(Ordering::SeqCst) {
+    // Already fetching it, or already downloaded and waiting for a restart.
+    if IS_DOWNLOADING.load(Ordering::SeqCst) || pending_version().is_some_and(|v| v == update.version) {
         return;
     }
 
-    // Windows and macOS: download in background, apply on restart.
-    if ask(
-        "Update Available",
-        format!(
-            "A new version ({}) is available.\n\nWould you like to download and install it? You can keep working while it downloads.",
-            update.version
-        ),
-        "Update",
-        "Later",
-    )
-    .await
-    {
-        DOWNLOAD_RETRIES.store(0, Ordering::SeqCst);
-        start_download(update);
-    }
+    // Download silently in the background; the user is only asked once the
+    // verified update is ready to install.
+    DOWNLOAD_RETRIES.store(0, Ordering::SeqCst);
+    start_download(update);
+}
+
+/// Version of a downloaded update waiting for restart/quit.
+fn pending_version() -> Option<String> {
+    PENDING.lock().ok().and_then(|p| p.as_ref().map(|(u, _)| u.version.clone()))
 }
 
 fn start_download(update: Update) {
@@ -316,26 +317,12 @@ async fn on_download_error(update: Update, err: anyhow::Error) {
         return;
     }
 
-    // Gave up after several tries — tell the user, offer to try again. The app
-    // keeps running on the current version regardless.
+    // Gave up for now. The app keeps running on the current version, and the
+    // next periodic / reconnect check starts a fresh download — no popup.
     let message = err.to_string();
+    log_info(&format!("Update download paused after {MAX_DOWNLOAD_RETRIES} tries; will retry on the next check."));
     emit("updater:error", json!({ "message": if message.is_empty() { "download failed".to_string() } else { message } }));
-    if IS_MAC {
-        // Keep the old Mac route available: download the .dmg by hand.
-        mac_manual_download(&update.version).await;
-        return;
-    }
-    if ask(
-        "Update download failed",
-        "The update could not be downloaded — your internet may be unstable.\n\nThe app will keep working normally on the current version. Nothing was changed. You can try again now or later.".to_string(),
-        "Try again",
-        "Later",
-    )
-    .await
-    {
-        DOWNLOAD_RETRIES.store(0, Ordering::SeqCst);
-        start_download(update);
-    }
+    DOWNLOAD_RETRIES.store(0, Ordering::SeqCst);
 }
 
 // Retry the initial check a few times — a laggy connection at startup shouldn't
@@ -369,6 +356,25 @@ async fn check_for_updates_with_retry() {
     }
 }
 
+/// One check that never prompts on failure. Used by the 30-minute timer and the
+/// reconnect trigger. Skips while another check runs or an update is already
+/// downloading / waiting for restart.
+async fn check_quietly() {
+    if IS_DOWNLOADING.load(Ordering::SeqCst) || pending_version().is_some() {
+        return;
+    }
+    if CHECKING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let res = check_for_updates().await;
+    CHECKING.store(false, Ordering::SeqCst);
+    match res {
+        Ok(Some(update)) => on_update_available(update).await,
+        Ok(None) => log_info("App is up to date."),
+        Err(err) => log_info(&format!("Update check skipped (offline?): {err}")),
+    }
+}
+
 /// Install a postponed, verified update when the main window closes (= app quit).
 fn install_pending_on_quit() {
     let Some((update, bytes)) = PENDING.lock().ok().and_then(|mut p| p.take()) else { return };
@@ -399,39 +405,74 @@ pub fn init_auto_updater() {
         });
     }
 
-    // Check for updates shortly after launch (don't block startup), with retries.
+    // Check for updates shortly after launch (don't block startup), with retries,
+    // then keep checking every 30 minutes for offices that come online later.
     tauri::async_runtime::spawn(async {
         tokio::time::sleep(Duration::from_secs(10)).await;
         check_for_updates_with_retry().await;
+        loop {
+            tokio::time::sleep(CHECK_INTERVAL).await;
+            check_quietly().await;
+        }
     });
 }
 
-// IPC handler for a manual "Check for updates" action. Like Electron, it only
-// exists once the auto-updater was initialized (production builds).
-async fn check(_a: &Args) -> HResult {
+// IPC `updater:check`. `{ quiet: true }` comes from the renderer when the
+// network reconnects; otherwise it's the Settings "Check for updates" button and
+// reports a status the UI can show.
+async fn check(a: &Args) -> HResult {
+    let current = app_handle().package_info().version.to_string();
+    if !INITIALIZED.load(Ordering::SeqCst) {
+        return Ok(json!({ "success": false, "current": current, "error": "Updates only work in the installed app (not in development builds)." }));
+    }
+    if super::truthy(a.obj(0).get("quiet").unwrap_or(&Value::Null)) {
+        tauri::async_runtime::spawn(check_quietly());
+        return Ok(json!({ "success": true, "current": current, "status": "checking" }));
+    }
+
+    if let Some(v) = pending_version() {
+        // Already downloaded — offer the restart again.
+        tauri::async_runtime::spawn(async {
+            if ask(
+                "Update Ready",
+                "The update is downloaded. Restart now to apply it?\n\nYour data is safe — updates never touch the barangay database.".to_string(),
+                "Restart Now",
+                "Later",
+            )
+            .await
+            {
+                if let Some((update, bytes)) = PENDING.lock().ok().and_then(|mut p| p.take()) {
+                    install_and_restart(update, bytes).await;
+                }
+            }
+        });
+        return Ok(json!({ "success": true, "current": current, "latest": v, "status": "ready" }));
+    }
+    if IS_DOWNLOADING.load(Ordering::SeqCst) {
+        return Ok(json!({ "success": true, "current": current, "status": "downloading" }));
+    }
+
     CHECK_RETRIES.store(0, Ordering::SeqCst);
     match check_for_updates().await {
         Ok(Some(update)) => {
             let version = update.version.clone();
-            // electron-updater fired 'update-available' (→ the prompt) as well.
             tauri::async_runtime::spawn(on_update_available(update));
-            Ok(json!({ "success": true, "version": version }))
+            Ok(json!({ "success": true, "current": current, "latest": version, "status": "downloading" }))
         }
         Ok(None) => {
             log_info("App is up to date.");
-            let current = app_handle().package_info().version.to_string();
-            Ok(json!({ "success": true, "version": current }))
+            Ok(json!({ "success": true, "current": current, "latest": current, "status": "up-to-date" }))
         }
         Err(err) => {
             log_error("Auto-updater error", &err);
-            Ok(json!({ "success": false, "error": err.to_string() }))
+            Ok(json!({ "success": false, "current": current, "error": "Couldn't reach the update server. Check the internet connection and try again." }))
         }
     }
 }
 
 pub async fn handle(channel: &str, a: &Args) -> Option<HResult> {
     Some(match channel {
-        "updater:check" if INITIALIZED.load(Ordering::SeqCst) => check(a).await,
+        "updater:check" => check(a).await,
         _ => return None,
     })
 }

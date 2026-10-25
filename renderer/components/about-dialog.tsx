@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 
 const TECH_STACK = [
-  { name: 'Electron', color: 'bg-sky-500/15 text-sky-600 dark:text-sky-400' },
+  { name: 'Tauri', color: 'bg-sky-500/15 text-sky-600 dark:text-sky-400' },
+  { name: 'Rust', color: 'bg-orange-500/15 text-orange-600 dark:text-orange-400' },
   { name: 'Next.js', color: 'bg-zinc-500/15 text-zinc-700 dark:text-zinc-300' },
   { name: 'React', color: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400' },
   { name: 'TypeScript', color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400' },

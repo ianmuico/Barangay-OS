@@ -442,5 +442,19 @@ export function installElectronAPI(): void {
       ipcRenderer.on('ai:autoDisabled', handler);
       return () => ipcRenderer.removeListener('ai:autoDisabled', handler);
     },
+
+    // Software updates
+    checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+    onUpdateProgress: (callback: (percent: number) => void) => {
+      const handler = (_e: unknown, percent: number) => callback(percent);
+      ipcRenderer.on('updater:progress', handler);
+      return () => ipcRenderer.removeListener('updater:progress', handler);
+    },
+  });
+
+  // Barangay offices are online only now and then: look for an update the
+  // moment the connection comes back (the backend also re-checks every 30 min).
+  window.addEventListener('online', () => {
+    ipcRenderer.invoke('updater:check', { quiet: true }).catch(() => {});
   });
 }
