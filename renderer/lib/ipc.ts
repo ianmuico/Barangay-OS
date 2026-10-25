@@ -1,4 +1,6 @@
 // Type definitions for the Electron IPC bridge
+import { installElectronAPI } from "./electron-api";
+import { isTauri } from "./tauri-bridge";
 
 export interface User {
   id: number;
@@ -756,6 +758,9 @@ declare global {
 }
 
 export function getAPI(): ElectronAPI | null {
+  if (typeof window !== 'undefined' && !window.electronAPI && isTauri()) {
+    installElectronAPI();
+  }
   if (typeof window !== 'undefined' && window.electronAPI) {
     return window.electronAPI;
   }

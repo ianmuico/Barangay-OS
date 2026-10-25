@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window: IPC bridge, dialogs, opener, updater, process",
+  "windows": ["main", "print-*"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "opener:default",
+    "updater:default",
+    "process:default"
+  ]
+}

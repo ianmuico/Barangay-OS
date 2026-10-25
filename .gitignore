@@ -9,3 +9,7 @@ release/
 *.db-shm
 .DS_Store
 .gstack/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+src-tauri/.cargo/
