@@ -163,7 +163,7 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
             </div>
             <div>
               <p className="text-[13px] font-semibold leading-tight">Barangay Management System</p>
-              <p className="text-[11px] text-muted-foreground">v1.3 &middot; Offline-First Desktop App</p>
+              <p className="text-[11px] text-muted-foreground">v1.4 &middot; Offline-First Desktop App</p>
             </div>
           </div>
 
