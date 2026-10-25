@@ -159,7 +159,7 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
         <div className="px-6 py-4">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden">
-              <img src="/favicon.svg" alt="App Logo" className="w-9 h-9" />
+              <img src="/app-icon.png" alt="App Logo" className="w-9 h-9" />
             </div>
             <div>
               <p className="text-[13px] font-semibold leading-tight">Barangay Management System</p>
