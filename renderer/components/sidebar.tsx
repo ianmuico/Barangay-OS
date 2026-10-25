@@ -162,7 +162,7 @@ export function Sidebar() {
     <aside className="flex h-full w-60 flex-col border-r bg-card">
       <div className="flex h-14 items-center justify-between border-b px-4">
         <h1 className="text-base font-semibold tracking-tight">Barangay System</h1>
-        <span className="text-[10px] text-muted-foreground/50 font-medium">v1.4.1</span>
+        <span className="text-[10px] text-muted-foreground/50 font-medium">v1.4.2</span>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">

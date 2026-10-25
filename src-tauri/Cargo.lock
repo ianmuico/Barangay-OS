@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "barangay-management"
-version = "1.4.1"
+version = "1.4.2"
 dependencies = [
  "aes-gcm",
  "anyhow",
