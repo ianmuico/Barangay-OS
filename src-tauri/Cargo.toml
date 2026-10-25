@@ -1,6 +1,6 @@
 [package]
 name = "barangay-management"
-version = "1.4.0"
+version = "1.4.1"
 description = "Barangay Management System - Offline-first desktop application"
 authors = ["Percival Ian Muico"]
 license = "MIT"

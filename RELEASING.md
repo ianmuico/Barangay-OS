@@ -23,9 +23,10 @@ over the old app keeps all data, since the database lives outside the app.
 
 ## 1. One-time setup (do this once)
 
-### a. GitHub token for the private repo
-Installed apps need a token to read releases from the private repo
-`mmmsss211/barangay-management`:
+### a. GitHub token (only if the repo is private)
+`ianmuico/Barangay-OS` is currently **public**, so installed apps read
+releases without any token — skip this step. If you ever make the repo
+private, installed apps need a token to read its releases:
 
 1. GitHub → Settings → Developer settings → **Fine-grained personal access tokens** → Generate new token.
 2. Repository access: **only** `barangay-management`. Permissions: **Contents: Read-only**. Expiration: 1 year (set a calendar reminder to rotate it).

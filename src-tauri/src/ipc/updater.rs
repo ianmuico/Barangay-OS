@@ -22,9 +22,9 @@ use tauri_plugin_updater::{Update, Updater, UpdaterExt};
 // open the download page — they install the new .dmg over the old app. Their data
 // is in Application Support (outside the .app), so it is preserved.
 const IS_MAC: bool = cfg!(target_os = "macos");
-const RELEASES_URL: &str = "https://github.com/mmmsss211/barangay-management/releases/latest";
-const GH_OWNER: &str = "mmmsss211";
-const GH_REPO: &str = "barangay-management";
+const RELEASES_URL: &str = "https://github.com/ianmuico/Barangay-OS/releases/latest";
+const GH_OWNER: &str = "ianmuico";
+const GH_REPO: &str = "Barangay-OS";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Auto-updater — resilient on slow / unstable internet.

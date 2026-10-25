@@ -57,7 +57,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkxMEFBNURCNjRBRjgyMDAKUldRQWdxOWsyNlVLa1M2b0lyTFhqd1JKcXpHRU5FNVVwSHNKSlNLckZhQWRNQVQ5ekFza01IR2MK",
       "endpoints": [
-        "https://github.com/mmmsss211/barangay-management/releases/latest/download/latest.json"
+        "https://github.com/ianmuico/Barangay-OS/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"
