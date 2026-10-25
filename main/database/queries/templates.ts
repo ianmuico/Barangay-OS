@@ -22,6 +22,11 @@ export function getTemplateById(id: number): ReportTemplate | undefined {
   return db.prepare('SELECT * FROM report_templates WHERE id = ?').get(id) as ReportTemplate | undefined;
 }
 
+export function getTemplateByName(name: string): ReportTemplate | undefined {
+  const db = getDb();
+  return db.prepare('SELECT * FROM report_templates WHERE name = ? ORDER BY id ASC LIMIT 1').get(name) as ReportTemplate | undefined;
+}
+
 export function createTemplate(data: {
   name: string;
   content_html: string;

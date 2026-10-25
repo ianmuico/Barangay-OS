@@ -7,6 +7,14 @@ import * as templates from '../database/queries/templates';
 import * as reports from '../database/queries/reports';
 import * as settings from '../database/queries/settings';
 import * as households from '../database/queries/households';
+import * as issuances from '../database/queries/issuances';
+import * as blotter from '../database/queries/blotter';
+import * as assets from '../database/queries/assets';
+import * as finance from '../database/queries/finance';
+import * as devPlan from '../database/queries/devPlan';
+import * as gad from '../database/queries/gad';
+import * as disaster from '../database/queries/disaster';
+import * as institutions from '../database/queries/institutions';
 import * as audit from '../database/queries/audit';
 import * as issues from '../database/queries/issues';
 import * as businesses from '../database/queries/businesses';
@@ -111,8 +119,16 @@ export function registerDatabaseHandlers(): void {
   });
 
   // === Households ===
-  ipcMain.handle('db:households:list', async () => {
-    return households.listHouseholds();
+  ipcMain.handle('db:households:list', async (_event, params) => {
+    return households.listHouseholds(params || {});
+  });
+
+  ipcMain.handle('db:households:get', async (_event, id: number) => {
+    return households.getHouseholdById(id);
+  });
+
+  ipcMain.handle('db:households:members', async (_event, id: number) => {
+    return households.getHouseholdMembers(id);
   });
 
   ipcMain.handle('db:households:create', async (_event, data) => {
@@ -128,6 +144,98 @@ export function registerDatabaseHandlers(): void {
     households.deleteHousehold(id);
     return { success: true };
   });
+
+  ipcMain.handle('db:households:addMember', async (_event, householdId: number, residentId: number, relationship?: string) => {
+    households.addHouseholdMember(householdId, residentId, relationship);
+    return { success: true };
+  });
+
+  ipcMain.handle('db:households:removeMember', async (_event, residentId: number) => {
+    households.removeHouseholdMember(residentId);
+    return { success: true };
+  });
+
+  ipcMain.handle('db:households:setHead', async (_event, householdId: number, residentId: number) => {
+    households.setHouseholdHead(householdId, residentId);
+    return { success: true };
+  });
+
+  // === Issuances (BORIS: ordinances / resolutions / executive orders) ===
+  ipcMain.handle('db:issuances:list', async (_event, params) => {
+    return issuances.listIssuances(params || {});
+  });
+  ipcMain.handle('db:issuances:get', async (_event, id: number) => {
+    return issuances.getIssuanceById(id);
+  });
+  ipcMain.handle('db:issuances:create', async (_event, data) => {
+    return issuances.createIssuance(data);
+  });
+  ipcMain.handle('db:issuances:update', async (_event, id: number, data) => {
+    issuances.updateIssuance(id, data);
+    return { success: true };
+  });
+  ipcMain.handle('db:issuances:delete', async (_event, id: number) => {
+    issuances.deleteIssuance(id);
+    return { success: true };
+  });
+
+  // === Blotter / incident registry + VAW desk ===
+  ipcMain.handle('db:blotter:list', async (_event, params) => {
+    return blotter.listBlotter(params || {});
+  });
+  ipcMain.handle('db:blotter:get', async (_event, id: number) => {
+    return blotter.getBlotterById(id);
+  });
+  ipcMain.handle('db:blotter:create', async (_event, data) => {
+    return blotter.createBlotter(data);
+  });
+  ipcMain.handle('db:blotter:update', async (_event, id: number, data) => {
+    blotter.updateBlotter(id, data);
+    return { success: true };
+  });
+  ipcMain.handle('db:blotter:delete', async (_event, id: number) => {
+    blotter.deleteBlotter(id);
+    return { success: true };
+  });
+
+  // === P2 governance modules (BAMS / BFMS / BDP / GAD / BDRIS / BBI) ===
+  // Assets (BAMS)
+  ipcMain.handle('db:assets:list', async (_e, p) => assets.listAssets(p || {}));
+  ipcMain.handle('db:assets:get', async (_e, id: number) => assets.getAssetById(id));
+  ipcMain.handle('db:assets:create', async (_e, d) => assets.createAsset(d));
+  ipcMain.handle('db:assets:update', async (_e, id: number, d) => { assets.updateAsset(id, d); return { success: true }; });
+  ipcMain.handle('db:assets:delete', async (_e, id: number) => { assets.deleteAsset(id); return { success: true }; });
+  // Finance (BFMS)
+  ipcMain.handle('db:finance:list', async (_e, p) => finance.listFinancialRecords(p || {}));
+  ipcMain.handle('db:finance:get', async (_e, id: number) => finance.getFinancialRecordById(id));
+  ipcMain.handle('db:finance:create', async (_e, d) => finance.createFinancialRecord(d));
+  ipcMain.handle('db:finance:update', async (_e, id: number, d) => { finance.updateFinancialRecord(id, d); return { success: true }; });
+  ipcMain.handle('db:finance:delete', async (_e, id: number) => { finance.deleteFinancialRecord(id); return { success: true }; });
+  ipcMain.handle('db:finance:summary', async (_e, year?: number) => finance.getFinancialSummary(year));
+  // Development projects (BDP)
+  ipcMain.handle('db:devplan:list', async (_e, p) => devPlan.listProjects(p || {}));
+  ipcMain.handle('db:devplan:get', async (_e, id: number) => devPlan.getProjectById(id));
+  ipcMain.handle('db:devplan:create', async (_e, d) => devPlan.createProject(d));
+  ipcMain.handle('db:devplan:update', async (_e, id: number, d) => { devPlan.updateProject(id, d); return { success: true }; });
+  ipcMain.handle('db:devplan:delete', async (_e, id: number) => { devPlan.deleteProject(id); return { success: true }; });
+  // GAD (BGADPBMS)
+  ipcMain.handle('db:gad:list', async (_e, p) => gad.listGad(p || {}));
+  ipcMain.handle('db:gad:get', async (_e, id: number) => gad.getGadById(id));
+  ipcMain.handle('db:gad:create', async (_e, d) => gad.createGad(d));
+  ipcMain.handle('db:gad:update', async (_e, id: number, d) => { gad.updateGad(id, d); return { success: true }; });
+  ipcMain.handle('db:gad:delete', async (_e, id: number) => { gad.deleteGad(id); return { success: true }; });
+  // Disaster (BDRIS)
+  ipcMain.handle('db:disaster:list', async (_e, p) => disaster.listDisaster(p || {}));
+  ipcMain.handle('db:disaster:get', async (_e, id: number) => disaster.getDisasterById(id));
+  ipcMain.handle('db:disaster:create', async (_e, d) => disaster.createDisaster(d));
+  ipcMain.handle('db:disaster:update', async (_e, id: number, d) => { disaster.updateDisaster(id, d); return { success: true }; });
+  ipcMain.handle('db:disaster:delete', async (_e, id: number) => { disaster.deleteDisaster(id); return { success: true }; });
+  // Institutions (BBI)
+  ipcMain.handle('db:institutions:list', async (_e, p) => institutions.listInstitutions(p || {}));
+  ipcMain.handle('db:institutions:get', async (_e, id: number) => institutions.getInstitutionById(id));
+  ipcMain.handle('db:institutions:create', async (_e, d) => institutions.createInstitution(d));
+  ipcMain.handle('db:institutions:update', async (_e, id: number, d) => { institutions.updateInstitution(id, d); return { success: true }; });
+  ipcMain.handle('db:institutions:delete', async (_e, id: number) => { institutions.deleteInstitution(id); return { success: true }; });
 
   // === Users (admin-only for create/delete/reset) ===
   ipcMain.handle('db:users:list', async () => {
@@ -254,6 +362,12 @@ export function registerDatabaseHandlers(): void {
     audit.logAudit(user?.id || null, 'DOCUMENT_DELETED', `Deleted generated document #${id}`);
     return { success: true };
   });
+  ipcMain.handle('db:reports:void', async (_event, id: number) => {
+    reports.voidGeneratedReport(id);
+    const user = getCurrentSessionUser();
+    audit.logAudit(user?.id || null, 'DOCUMENT_VOIDED', `Voided issued document #${id}`);
+    return { success: true };
+  });
   ipcMain.handle('db:reports:listDocs', async (_event, params: { search?: string; type?: 'all' | 'resident' | 'case' | 'business'; page?: number; limit?: number }) => {
     return reports.listDocuments(params || {});
   });
@@ -329,6 +443,13 @@ export function registerDatabaseHandlers(): void {
       totalYouth: residents.getYouthCount(),
       total4Ps: residents.get4PsCount(),
       totalPWD: residents.getPwdCount(),
+    };
+  });
+
+  ipcMain.handle('db:analytics:overview', async () => {
+    return {
+      pyramid: residents.getPopulationPyramid(),
+      monthly: residents.getMonthlyRegistrations(),
     };
   });
 

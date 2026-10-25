@@ -427,6 +427,7 @@ export const ALL_RESIDENTS_GROUP_OPTIONS: GroupOption[] = [
 ];
 
 export const FOURPS_GROUP_OPTIONS: GroupOption[] = [baseAlpha, basePurok, baseGender, baseCivil];
+export const SECTORAL_GROUP_OPTIONS: GroupOption[] = [baseAlpha, basePurok, baseGender, baseCivil];
 
 export const DECEASED_GROUP_OPTIONS: GroupOption[] = [
   baseAlpha, basePurok, baseGender,

@@ -1,0 +1,67 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Barangay Management System",
+  "mainBinaryName": "barangay-management",
+  "version": "../package.json",
+  "identifier": "ph.barangay.management",
+  "build": {
+    "frontendDist": "../renderer/out",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "npm --prefix renderer run dev",
+    "beforeBuildCommand": "npm --prefix renderer run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Barangay Management System",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "center": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "dmg", "app", "appimage"],
+    "category": "Business",
+    "shortDescription": "Barangay Management System",
+    "longDescription": "Offline-first barangay records, documents, and reports.",
+    "createUpdaterArtifacts": true,
+    "resources": {
+      "../resources/": "resources/"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "macOS": {
+      "signingIdentity": "-"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkxMEFBNURCNjRBRjgyMDAKUldRQWdxOWsyNlVLa1M2b0lyTFhqd1JKcXpHRU5FNVVwSHNKSlNLckZhQWRNQVQ5ekFza01IR2MK",
+      "endpoints": [
+        "https://github.com/ianmuico/Barangay-OS/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

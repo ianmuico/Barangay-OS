@@ -48,6 +48,10 @@ export default function BusinessesPage() {
   const [status, setStatus] = useState('active');
   const [dateRegistered, setDateRegistered] = useState('');
   const [notes, setNotes] = useState('');
+  const [permitNumber, setPermitNumber] = useState('');
+  const [permitIssued, setPermitIssued] = useState('');
+  const [permitExpiry, setPermitExpiry] = useState('');
+  const [permitFee, setPermitFee] = useState('');
   const [owners, setOwners] = useState<OwnerChip[]>([]);
 
   // Resident owner search
@@ -123,6 +127,7 @@ export default function BusinessesPage() {
     setEditBusiness(null);
     setName(''); setNature(''); setAddress(''); setPurok(''); setStatus('active');
     setDateRegistered(''); setNotes(''); setOwners([]);
+    setPermitNumber(''); setPermitIssued(''); setPermitExpiry(''); setPermitFee('');
     setFormOpen(true);
   };
 
@@ -133,6 +138,8 @@ export default function BusinessesPage() {
     setName(b.name); setNature(b.nature || ''); setAddress(b.address || '');
     setPurok(b.purok || ''); setStatus(b.status); setDateRegistered(b.date_registered || '');
     setNotes(b.notes || '');
+    setPermitNumber(b.permit_number || ''); setPermitIssued(b.permit_issued_date || '');
+    setPermitExpiry(b.permit_expiry_date || ''); setPermitFee(b.permit_fee != null ? String(b.permit_fee) : '');
     const list = await api.getBusinessOwners(b.id);
     setOwners(list.map(o => ({
       resident_id: o.resident_id, outside_owner_id: o.outside_owner_id,
@@ -151,6 +158,10 @@ export default function BusinessesPage() {
         name: name.trim(), nature: nature.trim() || null, address: address.trim() || null,
         purok: purok.trim() || null, status: status as 'active' | 'closed',
         date_registered: dateRegistered || null, notes: notes.trim() || null,
+        permit_number: permitNumber.trim() || null,
+        permit_issued_date: permitIssued || null,
+        permit_expiry_date: permitExpiry || null,
+        permit_fee: permitFee.trim() ? Number(permitFee) : null,
       };
       const ownerRefs = owners.map(o => ({ resident_id: o.resident_id ?? null, outside_owner_id: o.outside_owner_id ?? null }));
       if (editBusiness) {
@@ -235,7 +246,12 @@ export default function BusinessesPage() {
                   <td className="max-w-[240px] truncate px-4 py-2.5 text-muted-foreground" title={b.owner_names || ''}>{b.owner_names || '—'}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{[b.address, b.purok ? `Purok ${b.purok}` : null].filter(Boolean).join(', ') || '—'}</td>
                   <td className="px-4 py-2.5">
-                    <Badge variant={b.status === 'active' ? 'default' : 'secondary'} className="text-[10px] capitalize">{b.status}</Badge>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Badge variant={b.status === 'active' ? 'default' : 'secondary'} className="text-[10px] capitalize">{b.status}</Badge>
+                      {b.permit_state === 'expired' && <Badge className="bg-destructive text-[10px]">Permit expired</Badge>}
+                      {b.permit_state === 'expiring' && <Badge className="bg-amber-600 text-[10px]">Expiring</Badge>}
+                      {b.permit_state === 'valid' && <Badge className="bg-emerald-600 text-[10px]">Permit valid</Badge>}
+                    </div>
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
@@ -290,6 +306,29 @@ export default function BusinessesPage() {
                   <SelectItem value="closed">Closed</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Permit / Clearance */}
+            <div className="space-y-2 rounded-lg border p-3">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Permit / Clearance</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Permit No.</Label>
+                  <Input value={permitNumber} onChange={(e) => setPermitNumber(e.target.value)} placeholder="e.g., BP-2026-001" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Permit Fee (₱)</Label>
+                  <Input type="number" step="0.01" value={permitFee} onChange={(e) => setPermitFee(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Issued Date</Label>
+                  <Input type="date" value={permitIssued} onChange={(e) => setPermitIssued(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Expiry Date</Label>
+                  <Input type="date" value={permitExpiry} onChange={(e) => setPermitExpiry(e.target.value)} />
+                </div>
+              </div>
             </div>
 
             {/* Owners */}

@@ -9,6 +9,7 @@ import { registerReportHandlers } from './ipc/reports';
 import { registerServerHandlers } from './ipc/server';
 import { registerAIHandlers } from './ipc/ai';
 import { registerExcelHandlers } from './ipc/excel';
+import { registerBimsExportHandlers } from './ipc/bimsExport';
 import { registerPresenceHandlers } from './ipc/presence';
 import { initLogger } from './utils/logger';
 import { trackEvent } from './database/queries/analytics';
@@ -255,6 +256,7 @@ app.whenReady().then(() => {
   registerBackupHandlers();
   registerReportHandlers();
   registerExcelHandlers();
+  registerBimsExportHandlers();
   registerPresenceHandlers();
   registerServerHandlers();
   registerAIHandlers();

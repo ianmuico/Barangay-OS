@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Eye, FileDown, FolderOpen, Pencil, Printer, Search, Trash2 } from 'lucide-react';
+import { Ban, ChevronLeft, ChevronRight, Eye, FileDown, FolderOpen, Pencil, Printer, Search, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -108,6 +108,18 @@ export default function DocumentsPage() {
     setDeleteId(null);
   };
 
+  const handleVoid = async (id: number) => {
+    const api = getAPI();
+    if (!api) return;
+    try {
+      await api.voidDocument(id);
+      toast.success('Document voided (kept in the register)');
+      fetchDocs();
+    } catch (err: any) {
+      toast.error(err?.message || 'Void failed');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Saved Documents" description="Every generated certificate and custom document — search, reopen, edit, and reprint anytime." />
@@ -145,6 +157,7 @@ export default function DocumentsPage() {
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="px-4 py-3 text-left font-medium">Document</th>
+                  <th className="px-4 py-3 text-left font-medium">Control No.</th>
                   <th className="px-4 py-3 text-left font-medium">Linked To</th>
                   <th className="px-4 py-3 text-left font-medium">Date</th>
                   <th className="px-4 py-3 text-left font-medium">Size</th>
@@ -154,7 +167,15 @@ export default function DocumentsPage() {
               <tbody>
                 {result.data.map((d) => (
                   <tr key={d.id} className="cursor-pointer border-b transition-colors hover:bg-muted/30" onClick={() => openPreview(d)}>
-                    <td className="max-w-[280px] truncate px-4 py-2.5 font-medium" title={docTitle(d)}>{docTitle(d)}</td>
+                    <td className="max-w-[280px] truncate px-4 py-2.5 font-medium" title={docTitle(d)}>
+                      <span className={d.voided ? 'line-through text-muted-foreground' : ''}>{docTitle(d)}</span>
+                      {!!d.voided && <Badge variant="outline" className="ml-2 border-destructive text-[10px] text-destructive">VOID</Badge>}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {d.control_number
+                        ? <span className="font-mono text-xs">{d.control_number}</span>
+                        : <span className="text-muted-foreground">—</span>}
+                    </td>
                     <td className="px-4 py-2.5">
                       {d.business_name ? (
                         <Badge variant="outline" className="text-[10px]">🏪 {d.business_name}</Badge>
@@ -174,6 +195,9 @@ export default function DocumentsPage() {
                         <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit in page editor" onClick={() => router.push(`/documents/editor?reportId=${d.id}`)}><Pencil className="h-4 w-4" /></Button>
                         <Button variant="ghost" size="icon" className="h-8 w-8" title="Print" disabled={busy} onClick={() => handlePrint(d.id)}><Printer className="h-4 w-4" /></Button>
                         <Button variant="ghost" size="icon" className="h-8 w-8" title="Save as PDF" disabled={busy} onClick={() => handleExport(d)}><FileDown className="h-4 w-4" /></Button>
+                        {!d.voided && d.control_number && (
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title="Void (keep in register)" onClick={() => handleVoid(d.id)}><Ban className="h-4 w-4 text-amber-600" /></Button>
+                        )}
                         {isAdmin && (
                           <Button variant="ghost" size="icon" className="h-8 w-8" title="Delete" onClick={() => setDeleteId(d.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                         )}

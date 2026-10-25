@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
-import { type Resident, getAPI } from '@/lib/ipc';
+import { type Resident, type Household, getAPI } from '@/lib/ipc';
 import { getGradientForId, getInitials, GRADIENT_COLORS } from '@/lib/constants';
 import { OccupationSelect } from '@/components/occupation-select';
 
@@ -144,18 +144,32 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
   const [formData, setFormData] = useState({
     first_name: '', middle_name: '', last_name: '', suffix: '',
     birth_date: '', gender: 'Male', civil_status: 'Single',
+    birth_place: '',
     address: '', purok: '', contact_number: '', email: '',
     occupation: '', is_indigent: false, is_pwd: false, pwd_note: '', voter_status: 'Not Registered',
     blood_type: '', notes: '',
     partner_id: null as number | null,
     mother_id: null as number | null,
     father_id: null as number | null,
+    household_id: null as number | null,
+    relationship_to_head: '',
     // New fields
     religion: '',
     citizenship: 'Filipino',
     philsys_card_no: '',
     educational_attainment: '',
     is_4ps: false,
+    // Sectoral (RBI)
+    is_solo_parent: false,
+    is_osy: false,
+    is_ofw: false,
+    is_ip: false,
+    ethnicity: '',
+    labor_force_status: '',
+    residency_status: '',
+    residency_start_date: '',
+    disability_type: '',
+    pwd_id_no: '',
     status: 'living',
     death_date: '',
   });
@@ -166,6 +180,7 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
   const [motherName, setMotherName] = useState('');
   const [fatherName, setFatherName] = useState('');
   const [children, setChildren] = useState<Resident[]>([]);
+  const [households, setHouseholds] = useState<Household[]>([]);
   const [childSearching, setChildSearching] = useState(false);
   const [childQuery, setChildQuery] = useState('');
   const [childResults, setChildResults] = useState<Resident[]>([]);
@@ -180,6 +195,7 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
         birth_date: resident?.birth_date || '',
         gender: resident?.gender || 'Male',
         civil_status: resident?.civil_status || 'Single',
+        birth_place: resident?.birth_place || '',
         address: resident?.address || '',
         purok: resident?.purok || '',
         contact_number: resident?.contact_number || '',
@@ -192,6 +208,8 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
         partner_id: resident?.partner_id || null,
         mother_id: resident?.mother_id || null,
         father_id: resident?.father_id || null,
+        household_id: resident?.household_id || null,
+        relationship_to_head: resident?.relationship_to_head || '',
         religion: resident?.religion || '',
         citizenship: resident?.citizenship || 'Filipino',
         philsys_card_no: resident?.philsys_card_no || '',
@@ -199,6 +217,16 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
         is_4ps: resident?.is_4ps === 1,
         is_pwd: resident?.is_pwd === 1,
         pwd_note: resident?.pwd_note || '',
+        is_solo_parent: resident?.is_solo_parent === 1,
+        is_osy: resident?.is_osy === 1,
+        is_ofw: resident?.is_ofw === 1,
+        is_ip: resident?.is_ip === 1,
+        ethnicity: resident?.ethnicity || '',
+        labor_force_status: resident?.labor_force_status || '',
+        residency_status: resident?.residency_status || '',
+        residency_start_date: resident?.residency_start_date || '',
+        disability_type: resident?.disability_type || '',
+        pwd_id_no: resident?.pwd_id_no || '',
         status: resident?.status || 'living',
         death_date: resident?.death_date || '',
       });
@@ -227,6 +255,9 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
       } else {
         setChildren([]);
       }
+
+      // Load households for the picker
+      api.getHouseholds().then(setHouseholds).catch(() => setHouseholds([]));
     }
   }, [open, resident]);
 
@@ -278,6 +309,12 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
         is_4ps: formData.is_4ps ? 1 : 0,
         is_pwd: formData.is_pwd ? 1 : 0,
         pwd_note: formData.is_pwd ? (formData.pwd_note || null) : null,
+        is_solo_parent: formData.is_solo_parent ? 1 : 0,
+        is_osy: formData.is_osy ? 1 : 0,
+        is_ofw: formData.is_ofw ? 1 : 0,
+        is_ip: formData.is_ip ? 1 : 0,
+        disability_type: formData.is_pwd ? (formData.disability_type || null) : null,
+        pwd_id_no: formData.is_pwd ? (formData.pwd_id_no || null) : null,
       });
       onClose();
     } finally {
@@ -449,6 +486,17 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
               </div>
             </div>
 
+            {/* ── Place of Birth (RBI) ── */}
+            <div className="space-y-1">
+              <Label className="text-xs">Place of Birth</Label>
+              <Input
+                placeholder="e.g. Cebu City, Cebu"
+                value={formData.birth_place}
+                onChange={(e) => handleChange('birth_place', e.target.value)}
+                className="h-9"
+              />
+            </div>
+
             {/* ── Location Section ── */}
             <div className="space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Location</p>
@@ -470,6 +518,36 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
                     className="h-9"
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Household</Label>
+                  <Select
+                    value={formData.household_id ? String(formData.household_id) : '__none__'}
+                    onValueChange={(v) => handleChange('household_id', v === '__none__' ? null : Number(v))}
+                  >
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Not assigned" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Not assigned</SelectItem>
+                      {households.map((h) => (
+                        <SelectItem key={h.id} value={String(h.id)}>
+                          {h.household_number || `Household #${h.id}`}{h.purok ? ` · ${h.purok}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {formData.household_id && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Relationship to Head</Label>
+                    <Input
+                      placeholder="e.g. Head, Spouse, Son"
+                      value={formData.relationship_to_head}
+                      onChange={(e) => handleChange('relationship_to_head', e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -731,43 +809,144 @@ export function ResidentForm({ open, onClose, onSave, resident }: ResidentFormPr
               </div>
             </div>
 
-            {/* ── Flags ── */}
-            <div className="flex items-center gap-6">
-              <div className="flex items-center space-x-3">
-                <Switch
-                  id="is_indigent"
-                  checked={formData.is_indigent}
-                  onCheckedChange={(checked) => handleChange('is_indigent', checked)}
-                />
-                <Label htmlFor="is_indigent" className="text-sm">Indigent</Label>
+            {/* ── Flags / Sectoral (RBI) ── */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sectoral Classification (RBI)</p>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+                <div className="flex items-center space-x-3">
+                  <Switch
+                    id="is_indigent"
+                    checked={formData.is_indigent}
+                    onCheckedChange={(checked) => handleChange('is_indigent', checked)}
+                  />
+                  <Label htmlFor="is_indigent" className="text-sm">Indigent</Label>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Switch
+                    id="is_4ps"
+                    checked={formData.is_4ps}
+                    onCheckedChange={(checked) => handleChange('is_4ps', checked)}
+                  />
+                  <Label htmlFor="is_4ps" className="text-sm">4Ps Beneficiary</Label>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Switch
+                    id="is_pwd"
+                    checked={formData.is_pwd}
+                    onCheckedChange={(checked) => handleChange('is_pwd', checked)}
+                  />
+                  <Label htmlFor="is_pwd" className="text-sm">PWD</Label>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Switch
+                    id="is_solo_parent"
+                    checked={formData.is_solo_parent}
+                    onCheckedChange={(checked) => handleChange('is_solo_parent', checked)}
+                  />
+                  <Label htmlFor="is_solo_parent" className="text-sm">Solo Parent</Label>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Switch
+                    id="is_ofw"
+                    checked={formData.is_ofw}
+                    onCheckedChange={(checked) => handleChange('is_ofw', checked)}
+                  />
+                  <Label htmlFor="is_ofw" className="text-sm">OFW</Label>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Switch
+                    id="is_osy"
+                    checked={formData.is_osy}
+                    onCheckedChange={(checked) => handleChange('is_osy', checked)}
+                  />
+                  <Label htmlFor="is_osy" className="text-sm">Out-of-School Youth</Label>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Switch
+                    id="is_ip"
+                    checked={formData.is_ip}
+                    onCheckedChange={(checked) => handleChange('is_ip', checked)}
+                  />
+                  <Label htmlFor="is_ip" className="text-sm">Indigenous Person</Label>
+                </div>
               </div>
-              <div className="flex items-center space-x-3">
-                <Switch
-                  id="is_4ps"
-                  checked={formData.is_4ps}
-                  onCheckedChange={(checked) => handleChange('is_4ps', checked)}
-                />
-                <Label htmlFor="is_4ps" className="text-sm">4Ps Beneficiary</Label>
-              </div>
-              <div className="flex items-center space-x-3">
-                <Switch
-                  id="is_pwd"
-                  checked={formData.is_pwd}
-                  onCheckedChange={(checked) => handleChange('is_pwd', checked)}
-                />
-                <Label htmlFor="is_pwd" className="text-sm">PWD</Label>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                {formData.is_ip && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Ethnicity</Label>
+                    <Input
+                      placeholder="e.g. Cebuano, Badjao"
+                      value={formData.ethnicity}
+                      onChange={(e) => handleChange('ethnicity', e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <Label className="text-xs">Labor Force Status</Label>
+                  <Select value={formData.labor_force_status || ''} onValueChange={(v) => handleChange('labor_force_status', v)}>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Employed">Employed</SelectItem>
+                      <SelectItem value="Unemployed">Unemployed</SelectItem>
+                      <SelectItem value="Not in labor force">Not in labor force</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Residency Status</Label>
+                  <Select value={formData.residency_status || ''} onValueChange={(v) => handleChange('residency_status', v)}>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Permanent">Permanent</SelectItem>
+                      <SelectItem value="Transient">Transient</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Resident Since</Label>
+                  <Input
+                    type="date"
+                    value={formData.residency_start_date}
+                    onChange={(e) => handleChange('residency_start_date', e.target.value)}
+                    className="h-9"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* ── PWD note (shown only when PWD is on) ── */}
+            {/* ── PWD details (shown only when PWD is on) ── */}
             {formData.is_pwd && (
-              <div className="space-y-1">
-                <Label className="text-xs">PWD Note <span className="text-muted-foreground">(type of disability / details)</span></Label>
-                <Input
-                  value={formData.pwd_note}
-                  onChange={(e) => handleChange('pwd_note', e.target.value)}
-                  placeholder="e.g., Visual impairment, PWD ID #12345"
-                />
+              <div className="space-y-2 rounded-lg border p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Disability Type</Label>
+                    <Input
+                      value={formData.disability_type}
+                      onChange={(e) => handleChange('disability_type', e.target.value)}
+                      placeholder="e.g., Visual, Physical, Hearing"
+                      className="h-9"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">PWD ID No.</Label>
+                    <Input
+                      value={formData.pwd_id_no}
+                      onChange={(e) => handleChange('pwd_id_no', e.target.value)}
+                      placeholder="PWD ID number"
+                      className="h-9"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">PWD Note <span className="text-muted-foreground">(additional details)</span></Label>
+                  <Input
+                    value={formData.pwd_note}
+                    onChange={(e) => handleChange('pwd_note', e.target.value)}
+                    placeholder="Optional extra details"
+                  />
+                </div>
               </div>
             )}
 

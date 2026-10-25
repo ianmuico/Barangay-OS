@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   title: 'Barangay Management System',
   description: 'Offline-first barangay management application',
   icons: {
-    icon: '/favicon.svg',
+    icon: '/app-icon.png',
   },
 };
 

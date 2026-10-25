@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 
 const TECH_STACK = [
-  { name: 'Electron', color: 'bg-sky-500/15 text-sky-600 dark:text-sky-400' },
+  { name: 'Tauri', color: 'bg-sky-500/15 text-sky-600 dark:text-sky-400' },
+  { name: 'Rust', color: 'bg-orange-500/15 text-orange-600 dark:text-orange-400' },
   { name: 'Next.js', color: 'bg-zinc-500/15 text-zinc-700 dark:text-zinc-300' },
   { name: 'React', color: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400' },
   { name: 'TypeScript', color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400' },
@@ -158,11 +159,11 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
         <div className="px-6 py-4">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden">
-              <img src="/favicon.svg" alt="App Logo" className="w-9 h-9" />
+              <img src="/app-icon.png" alt="App Logo" className="w-9 h-9" />
             </div>
             <div>
               <p className="text-[13px] font-semibold leading-tight">Barangay Management System</p>
-              <p className="text-[11px] text-muted-foreground">v1.3 &middot; Offline-First Desktop App</p>
+              <p className="text-[11px] text-muted-foreground">v1.4.1 &middot; Offline-First Desktop App</p>
             </div>
           </div>
 

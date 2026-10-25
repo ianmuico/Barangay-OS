@@ -1,9 +1,11 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import fs from 'fs';
 import path from 'path';
-import { getTemplateById } from '../database/queries/templates';
+import { getTemplateById, getTemplateByName } from '../database/queries/templates';
+import { getRbiFormCCounts } from '../database/queries/rbiFormC';
+import ExcelJS from 'exceljs';
 import { getResidentById } from '../database/queries/residents';
-import { createGeneratedReport } from '../database/queries/reports';
+import { createGeneratedReport, nextControlNumber } from '../database/queries/reports';
 import { getSetting } from '../database/queries/settings';
 import { listOfficials } from '../database/queries/officials';
 import { logAudit } from '../database/queries/audit';
@@ -145,7 +147,7 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => map[c]);
 }
 
-function resolveVariables(html: string, resident: any, inputValues?: Record<string, string>): string {
+function resolveVariables(html: string, resident: any, inputValues?: Record<string, string>, extras?: Record<string, string>): string {
   const fullName = [resident.first_name, resident.middle_name, resident.last_name, resident.suffix]
     .filter(Boolean)
     .join(' ');
@@ -172,6 +174,7 @@ function resolveVariables(html: string, resident: any, inputValues?: Record<stri
     purok: resident.purok || '',
     address: resident.address || '',
     birthDate: resident.birth_date ? formatDate(new Date(resident.birth_date)) : '',
+    birthPlace: resident.birth_place || '',
     age: resident.birth_date ? String(calculateAge(resident.birth_date)) : '',
     gender: resident.gender || '',
     civilStatus: resident.civil_status || '',
@@ -186,6 +189,11 @@ function resolveVariables(html: string, resident: any, inputValues?: Record<stri
     citizenship: resident.citizenship || 'Filipino',
     philsysCardNo: resident.philsys_card_no || '',
     educationalAttainment: resident.educational_attainment || '',
+    ethnicity: resident.ethnicity || '',
+    laborForceStatus: resident.labor_force_status || '',
+    residencyStatus: resident.residency_status || '',
+    disabilityType: resident.disability_type || '',
+    pwdIdNo: resident.pwd_id_no || '',
     // Settings
     barangay: getSetting('barangay_name') || '',
     barangayAddress: getSetting('barangay_address') || '',
@@ -194,7 +202,11 @@ function resolveVariables(html: string, resident: any, inputValues?: Record<stri
     date: formatDate(new Date()),
     dateOrdinal: formatDateOrdinal(new Date()),
     year: String(new Date().getFullYear()),
+    controlNumber: '',
   };
+
+  // Extra runtime values (e.g. allocated control number, case context) override defaults.
+  if (extras) Object.assign(variables, extras);
 
   let result = html;
 
@@ -332,7 +344,16 @@ export function registerReportHandlers(): void {
     const resident = getResidentById(residentId);
     if (!resident) return { success: false, error: 'Resident not found' };
 
-    const resolvedHtml = resolveVariables(template.content_html, resident, inputValues);
+    // Allocate a control number only if the template opts in with {{controlNumber}}.
+    let controlNumber: string | null = null;
+    if (template.content_html.includes('{{controlNumber}}')) {
+      controlNumber = nextControlNumber(template.name);
+    }
+
+    const resolvedHtml = resolveVariables(
+      template.content_html, resident, inputValues,
+      controlNumber ? { controlNumber } : undefined
+    );
 
     const user = getCurrentSessionUser();
     const reportId = createGeneratedReport({
@@ -340,12 +361,62 @@ export function registerReportHandlers(): void {
       resident_id: residentId,
       content_html: resolvedHtml,
       generated_by: user?.id || 0,
+      control_number: controlNumber,
     });
 
     logAudit(user?.id || null, 'REPORT_GENERATED',
       `Generated "${template.name}" for ${resident.first_name} ${resident.last_name}`);
 
     return { success: true, html: resolvedHtml, reportId, paper: parsePaperJson(template.paper_json) };
+  });
+
+  // RBI Form C — statutory semestral summary. Counts injected as {{count:*}} variables
+  // into an editable seeded template; boilerplate/wording stays user-editable.
+  ipcMain.handle('reports:generateFormC', async (_event, inputValues?: Record<string, string>) => {
+    const template = getTemplateByName('RBI Form C (Semestral Summary)');
+    if (!template) return { success: false, error: 'RBI Form C template not found' };
+
+    const counts = getRbiFormCCounts();
+    const extras: Record<string, string> = {};
+    for (const [k, v] of Object.entries(counts)) extras[`count:${k}`] = String(v);
+
+    let html = resolveVariables(template.content_html, {} as any, inputValues, extras);
+    // Any {{count:*}} the template references but we didn't compute → show 0.
+    html = html.replace(/\{\{count:[a-zA-Z0-9_]+\}\}/g, '0');
+
+    return { success: true, html, paper: parsePaperJson(template.paper_json), counts };
+  });
+
+  // Export the RBI Form C counts as an Excel workbook (report data, not just PDF).
+  ipcMain.handle('reports:exportFormCXlsx', async () => {
+    try {
+      const counts = getRbiFormCCounts();
+      const labels: Record<string, string> = {
+        total: 'Total Population', male: 'Male', female: 'Female', households: 'Households',
+        children: 'Children (0-14)', youth: 'Youth (15-30)', adults: 'Adults (31-59)',
+        seniors: 'Senior Citizens (60+)', seniorsMale: 'Seniors - Male', seniorsFemale: 'Seniors - Female',
+        pwd: 'PWD', soloParents: 'Solo Parents', osy: 'Out-of-School Youth', ofw: 'OFW',
+        ip: 'Indigenous People', indigent: 'Indigent', fourps: '4Ps Beneficiaries', voters: 'Registered Voters',
+      };
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('RBI Form C');
+      ws.addRow(['Indicator', 'Count']);
+      ws.getRow(1).font = { bold: true };
+      for (const [k, v] of Object.entries(counts)) ws.addRow([labels[k] || k, v]);
+      ws.columns.forEach((c) => { c.width = 28; });
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const save = await require('electron').dialog.showSaveDialog({
+        title: 'Export RBI Form C (Excel)',
+        defaultPath: 'RBI_Form_C.xlsx',
+        filters: [{ name: 'Excel Workbook', extensions: ['xlsx'] }],
+      });
+      if (save.canceled || !save.filePath) return { success: false, error: 'Save cancelled' };
+      fs.writeFileSync(save.filePath, Buffer.from(buffer));
+      return { success: true, path: save.filePath };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   });
 
   ipcMain.handle('reports:exportPDF', async (_event, html: string, filename: string, paperInput?: PaperSettings) => {

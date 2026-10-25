@@ -1,14 +1,28 @@
-# Build & publish the desktop app for Windows AND macOS, automatically.
+# Build & publish the desktop app for Windows AND macOS, automatically (Tauri).
 #
 # Trigger: push a version tag like  v1.1.0
 #   git tag v1.1.0 && git push origin v1.1.0
+# The tag must match "version" in package.json (tauri.conf.json reads it from
+# there) — installed apps compare THAT number to decide if an update is newer.
 #
-# What happens: GitHub spins up a Windows runner and a macOS runner, each builds
-# its own installer, and both upload to the SAME GitHub Release (v1.1.0).
-#   - Windows → BarangayManagement-Setup-1.1.0.exe + latest.yml   (silent auto-update)
-#   - macOS   → BarangayManagement-1.1.0-arm64.dmg + .zip + latest-mac.yml (notify + download)
+# What happens: a tiny first job makes sure the GitHub Release (v1.1.0) exists,
+# then GitHub spins up a Windows runner and a macOS (Apple Silicon) runner. Each
+# builds its own installer with tauri-action and uploads to the SAME release:
+#   - Windows → the NSIS installer  …_x64-setup.exe  (+ its .sig)
+#   - macOS   → the …_aarch64.dmg for first installs, plus the …app.tar.gz
+#               update bundle (+ its .sig)
+#   - both    → latest.json  — the file installed apps poll. tauri-action merges
+#               each platform's entry (download URL + signature) into it.
+# Installed apps on BOTH platforms download the signed bundle in the background
+# and install it on restart.
 #
-# No personal token needed here — GitHub gives the workflow its own token
+# Secrets (repo → Settings → Secrets and variables → Actions):
+#   TAURI_SIGNING_PRIVATE_KEY           — the private key from `npx tauri signer generate`
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — its password (empty if you set none)
+# Every update bundle is signed with it; apps refuse anything whose signature
+# doesn't match the public key baked into tauri.conf.json. See RELEASING.md §1.
+#
+# No personal GitHub token needed here — GitHub gives the workflow its own token
 # (GITHUB_TOKEN) with permission to publish releases on THIS repo.
 name: Release
 
@@ -18,14 +32,39 @@ on:
       - 'v*'
 
 permissions:
-  contents: write        # lets electron-builder create/update the GitHub Release
+  contents: write        # lets the workflow create/update the GitHub Release
 
 jobs:
+  # Create the release ONCE up front, so the two build jobs don't race to create
+  # two releases for the same tag. If you made the tag via "Draft a new release →
+  # Publish" on github.com, the release already exists and is reused.
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+    steps:
+      - id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$REPO" --title "$TAG" --generate-notes
+          echo "id=$(gh api "repos/$REPO/releases/tags/$TAG" --jq .id)" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false     # if one OS fails, still finish the other
       matrix:
-        os: [windows-latest, macos-latest]
+        include:
+          - os: windows-latest
+            args: ''
+            rust_targets: ''
+          - os: macos-latest                        # Apple Silicon runner
+            args: '--target aarch64-apple-darwin'
+            rust_targets: 'aarch64-apple-darwin'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -34,23 +73,32 @@ jobs:
         with:
           node-version: 20
 
-      # Installs deps and (via the postinstall electron-rebuild) compiles the
-      # native SQLite module for THIS runner's OS — that's why each platform
-      # must build on its own machine.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      # Caches compiled Rust crates between releases — a cold build takes a while.
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Root deps = the Tauri CLI. Renderer deps = the Next.js app that
+      # `tauri build` compiles first (beforeBuildCommand in tauri.conf.json).
+      # SQLite is compiled into the Rust binary (rusqlite "bundled"), so there is
+      # no native-module rebuild step any more — but each platform still builds on
+      # its own runner because the Rust binary is native code.
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci
+          npm ci --prefix renderer
 
-      - name: Build renderer + main
-        run: npm run build
-
-      - name: Publish Windows installer
-        if: runner.os == 'Windows'
-        run: npx electron-builder --win --publish always
+      - name: Build, sign & publish
+        uses: tauri-apps/tauri-action@v0
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish macOS build
-        if: runner.os == 'macOS'
-        run: npx electron-builder --mac --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          includeUpdaterJson: true   # upload/merge latest.json for the updater
+          args: ${{ matrix.args }}

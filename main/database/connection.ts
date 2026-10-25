@@ -169,6 +169,17 @@ function runInlineMigrations(db: Database.Database): void {
     { name: '017_api_clients_provenance.sql',      sql: MIGRATION_017 },
     { name: '018_row_version.sql',                 sql: MIGRATION_018 },
     { name: '019_app_users_roles.sql',             sql: MIGRATION_019 },
+    { name: '020_rbi_birth_place.sql',             sql: MIGRATION_020 },
+    { name: '021_rbi_sectoral_fields.sql',         sql: MIGRATION_021 },
+    { name: '022_households_form_a.sql',            sql: MIGRATION_022 },
+    { name: '023_issuance_control_numbers.sql',    sql: MIGRATION_023 },
+    { name: '024_seed_kp_templates.sql',           sql: MIGRATION_024 },
+    { name: '025_seed_rbi_form_c.sql',             sql: MIGRATION_025 },
+    { name: '026_business_permits.sql',            sql: MIGRATION_026 },
+    { name: '027_boris_issuances.sql',             sql: MIGRATION_027 },
+    { name: '028_blotter_vaw_kp.sql',              sql: MIGRATION_028 },
+    { name: '029_fix_template_page_scoping.sql',   sql: MIGRATION_029 },
+    { name: '030_p2_governance_modules.sql',       sql: MIGRATION_030 },
     // ─── Add future migrations here ────────────────────────────────────
   ];
 
@@ -471,6 +482,230 @@ INSERT OR IGNORE INTO app_roles (name, perm_search, perm_read, perm_create, perm
   ('Encoder',       1, 1, 1, 0, 0),
   ('Purok Leader',  1, 1, 0, 0, 0);
 INSERT OR IGNORE INTO settings (key, value) VALUES ('online_enabled', '1');
+`;
+
+// ─── BIMS-readiness (P0) ────────────────────────────────────────────────────
+// DILG LGUSS-BIMS alignment. See BIMS-READINESS-PLAN.md.
+// Batch A1: RBI Form B "place of birth".
+const MIGRATION_020 = `
+ALTER TABLE residents ADD COLUMN birth_place TEXT;
+`;
+
+// Batch A2: RBI sectoral / vulnerable-group tags + structured PWD.
+const MIGRATION_021 = `
+ALTER TABLE residents ADD COLUMN is_solo_parent INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE residents ADD COLUMN is_osy INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE residents ADD COLUMN is_ofw INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE residents ADD COLUMN is_ip INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE residents ADD COLUMN ethnicity TEXT;
+ALTER TABLE residents ADD COLUMN labor_force_status TEXT;
+ALTER TABLE residents ADD COLUMN residency_status TEXT;
+ALTER TABLE residents ADD COLUMN residency_start_date TEXT;
+ALTER TABLE residents ADD COLUMN disability_type TEXT;
+ALTER TABLE residents ADD COLUMN pwd_id_no TEXT;
+`;
+
+// Face B: Households (RBI Form A) — household head, roster, and member relationships.
+const MIGRATION_022 = `
+ALTER TABLE households ADD COLUMN head_resident_id INTEGER REFERENCES residents(id) ON DELETE SET NULL;
+ALTER TABLE households ADD COLUMN purok TEXT;
+ALTER TABLE households ADD COLUMN housing_type TEXT;
+ALTER TABLE households ADD COLUMN household_uid TEXT;
+ALTER TABLE residents ADD COLUMN relationship_to_head TEXT;
+`;
+
+// Face C: Issuance — certificate control numbers + issuance-register fields.
+const MIGRATION_023 = `
+CREATE TABLE IF NOT EXISTS cert_sequences (
+  doc_type TEXT NOT NULL,
+  year INTEGER NOT NULL,
+  last_no INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (doc_type, year)
+);
+ALTER TABLE generated_reports ADD COLUMN control_number TEXT;
+ALTER TABLE generated_reports ADD COLUMN purpose TEXT;
+ALTER TABLE generated_reports ADD COLUMN fee REAL;
+ALTER TABLE generated_reports ADD COLUMN or_number TEXT;
+ALTER TABLE generated_reports ADD COLUMN released_to TEXT;
+ALTER TABLE generated_reports ADD COLUMN voided INTEGER NOT NULL DEFAULT 0;
+`;
+
+// Face C: seeded editable KP printables (Certificate to File Action, Amicable Settlement).
+const MIGRATION_024 = `
+INSERT OR IGNORE INTO report_templates (name, content_html, variables_json, pages_json) VALUES
+('Certificate to File Action',
+'{{header}}<div style="text-align:center;margin-bottom:8px;"><p style="font-size:10pt;font-weight:bold;text-decoration:underline;">OFFICE OF THE LUPONG TAGAPAMAYAPA</p><h2 style="margin:8px 0;letter-spacing:2px;">CERTIFICATION TO FILE ACTION</h2><p style="font-size:10pt;">(Katibayan Upang Makadulog sa Hukuman)</p></div><div style="text-align:right;font-size:10pt;"><p style="margin:1px 0;">Barangay Case No.: {{input:case_number}}</p><p style="margin:1px 0;">Control No.: {{controlNumber}}</p></div><p style="margin-top:8px;"><strong>{{input:complainant_name}}</strong><br/><em>Complainant</em></p><p style="text-align:center;margin:6px 0;">— versus —</p><p><strong>{{input:respondent_name}}</strong><br/><em>Respondent</em></p><div style="text-align:center;margin:16px 0;"><h3 style="letter-spacing:2px;">C E R T I F I C A T I O N</h3></div><p style="text-indent:40px;">This is to certify that:</p><p style="text-indent:40px;">1. There has been a personal confrontation between the parties before the Punong Barangay / Pangkat ng Tagapagkasundo, but mediation and/or conciliation failed;</p><p style="text-indent:40px;">2. No amicable settlement was reached, for the following reason: {{input:reason}};</p><p style="text-indent:40px;">3. Therefore, the corresponding complaint may now be filed in court or the proper government office.</p><p style="text-indent:40px;">Issued this <strong>{{date}}</strong> at {{barangay}}, {{municipality}}, {{province}}.</p>{{signatory:punong_barangay}}',
+'["barangay","municipality","province","date"]',
+'["cases"]'),
+('Amicable Settlement (KP Form 16)',
+'{{header}}<div style="text-align:center;margin-bottom:8px;"><p style="font-size:10pt;font-weight:bold;text-decoration:underline;">OFFICE OF THE LUPONG TAGAPAMAYAPA</p><h2 style="margin:8px 0;letter-spacing:2px;">AMICABLE SETTLEMENT</h2><p style="font-size:10pt;">(Kasunduang Pag-aayos — KP Form 16)</p></div><div style="text-align:right;font-size:10pt;"><p style="margin:1px 0;">Barangay Case No.: {{input:case_number}}</p><p style="margin:1px 0;">Control No.: {{controlNumber}}</p></div><p style="text-indent:40px;margin-top:8px;">We, <strong>{{input:complainant_name}}</strong> (Complainant) and <strong>{{input:respondent_name}}</strong> (Respondent), do hereby agree to settle our dispute amicably under the following terms and conditions:</p><p style="text-indent:40px;">{{input:settlement_terms}}</p><p style="text-indent:40px;">We freely and voluntarily bind ourselves to comply with the foregoing settlement. Done this <strong>{{date}}</strong> at {{barangay}}, {{municipality}}, {{province}}.</p><div style="display:flex;justify-content:space-between;margin-top:36px;"><div style="text-align:center;"><p>_________________________</p><p><em>Complainant</em></p></div><div style="text-align:center;"><p>_________________________</p><p><em>Respondent</em></p></div></div><p style="margin-top:20px;">Attested by:</p>{{signatory:punong_barangay}}',
+'["barangay","municipality","province","date"]',
+'["cases"]');
+`;
+
+// Face D: seeded editable RBI Form C (semestral summary). Counts are injected as
+// {{count:*}} variables so the wording/layout stays user-editable (Principle 4).
+const MIGRATION_025 = `
+INSERT OR IGNORE INTO report_templates (name, content_html, variables_json, pages_json) VALUES
+('RBI Form C (Semestral Summary)',
+'{{header}}<div style="text-align:center;margin-bottom:8px;"><h2 style="margin:8px 0;letter-spacing:2px;">RECORDS OF BARANGAY INHABITANTS</h2><p style="font-size:10pt;">Form C — Semestral Summary</p><p style="font-size:10pt;">Barangay {{barangay}}, {{municipality}}, {{province}}</p><p style="font-size:10pt;">Covering Period: {{input:period}}</p></div><table style="width:100%;border-collapse:collapse;font-size:11pt;"><tr><td><strong>Total Population</strong></td><td style="text-align:right;">{{count:total}}</td><td><strong>Households</strong></td><td style="text-align:right;">{{count:households}}</td></tr><tr><td>Male</td><td style="text-align:right;">{{count:male}}</td><td>Female</td><td style="text-align:right;">{{count:female}}</td></tr></table><h3 style="margin:14px 0 4px;">By Age Group</h3><table style="width:100%;border-collapse:collapse;font-size:11pt;"><tr><td>Children (0-14)</td><td style="text-align:right;">{{count:children}}</td><td>Youth (15-30)</td><td style="text-align:right;">{{count:youth}}</td></tr><tr><td>Adults (31-59)</td><td style="text-align:right;">{{count:adults}}</td><td>Senior Citizens (60+)</td><td style="text-align:right;">{{count:seniors}}</td></tr></table><h3 style="margin:14px 0 4px;">Sectoral Groups</h3><table style="width:100%;border-collapse:collapse;font-size:11pt;"><tr><td>Senior Citizens</td><td style="text-align:right;">{{count:seniors}}</td><td>Persons with Disability</td><td style="text-align:right;">{{count:pwd}}</td></tr><tr><td>Solo Parents</td><td style="text-align:right;">{{count:soloParents}}</td><td>Out-of-School Youth</td><td style="text-align:right;">{{count:osy}}</td></tr><tr><td>OFW</td><td style="text-align:right;">{{count:ofw}}</td><td>Indigenous People</td><td style="text-align:right;">{{count:ip}}</td></tr><tr><td>4Ps Beneficiaries</td><td style="text-align:right;">{{count:fourps}}</td><td>Indigent</td><td style="text-align:right;">{{count:indigent}}</td></tr><tr><td>Registered Voters</td><td style="text-align:right;">{{count:voters}}</td><td></td><td></td></tr></table><p style="margin-top:16px;">Prepared and certified true and correct this {{date}}.</p>{{signatory:barangay_secretary}}',
+'["barangay","municipality","province","date"]',
+'["reports"]');
+`;
+
+// Face H (P1): business permit / clearance validity + renewal tracking.
+const MIGRATION_026 = `
+ALTER TABLE businesses ADD COLUMN permit_number TEXT;
+ALTER TABLE businesses ADD COLUMN permit_issued_date TEXT;
+ALTER TABLE businesses ADD COLUMN permit_expiry_date TEXT;
+ALTER TABLE businesses ADD COLUMN permit_fee REAL;
+`;
+
+// Face F (P1): BORIS — repository of barangay ordinances, resolutions, executive orders.
+const MIGRATION_027 = `
+CREATE TABLE IF NOT EXISTS issuances (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issuance_uid TEXT,
+  type TEXT NOT NULL DEFAULT 'ordinance',
+  reference_no TEXT,
+  title TEXT NOT NULL,
+  date_enacted TEXT,
+  author TEXT,
+  status TEXT NOT NULL DEFAULT 'enacted',
+  full_text TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`;
+
+// Face G (P1): Blotter / incident registry + VAW desk, and KP stage/nature on cases.
+const MIGRATION_028 = `
+CREATE TABLE IF NOT EXISTS blotter (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  blotter_uid TEXT,
+  entry_no TEXT,
+  category TEXT NOT NULL DEFAULT 'incident',
+  incident_date TEXT,
+  incident_time TEXT,
+  location TEXT,
+  reported_by TEXT,
+  respondent TEXT,
+  narrative TEXT,
+  action_taken TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  is_vawc INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+ALTER TABLE cases ADD COLUMN nature TEXT;
+ALTER TABLE cases ADD COLUMN kp_stage TEXT;
+`;
+
+// Fix template page-scoping: templates seeded in migrations 006/007 predate the
+// pages_json column, so they defaulted to NULL = visible on EVERY page (e.g. the
+// "Business Clearance" template appearing on the Deceased page). Scope each seeded
+// default to the pages where it belongs. Guarded by "pages_json IS NULL" so any
+// template a user has already scoped in the Templates page is left untouched.
+const MIGRATION_029 = `
+UPDATE report_templates SET pages_json = '["businesses"]'
+  WHERE name = 'Business Clearance' AND pages_json IS NULL;
+UPDATE report_templates SET pages_json = '["cases"]'
+  WHERE name IN ('Sumbong (Complaint)', 'Pagtawag / Summons (Bisaya)', 'Minutas sa Husay (Mediation)')
+  AND pages_json IS NULL;
+UPDATE report_templates SET pages_json = '["residents","seniors","indigents","youth","four-ps","pwd","solo-parents","osy","ofw","ip","deceased","flagged","generator"]'
+  WHERE name IN (
+    'Barangay Clearance', 'Certificate of Residency', 'Certificate of Indigency',
+    'Certification for Loan', 'First Time Job Seekers (RA 11261)', 'Out of School Youth (OSY)',
+    'Residence Certificate (4Ps)', 'Living Separately Certification', 'Oath of Undertaking (Job Seekers)'
+  ) AND pages_json IS NULL;
+`;
+
+// Face J (P2): remaining BIMS subsystems as records modules.
+// BAMS (assets), BFMS (finance), BDP (development plan), BGADPBMS (GAD),
+// BDRIS (disaster), BBI (barangay-based institutions).
+const MIGRATION_030 = `
+CREATE TABLE IF NOT EXISTS assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_uid TEXT,
+  item_name TEXT NOT NULL,
+  category TEXT,
+  description TEXT,
+  acquisition_date TEXT,
+  acquisition_cost REAL,
+  quantity INTEGER,
+  unit TEXT,
+  location TEXT,
+  condition TEXT,
+  custodian TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS financial_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fiscal_year INTEGER,
+  category TEXT NOT NULL DEFAULT 'disbursement',
+  account TEXT,
+  description TEXT,
+  amount REAL,
+  entry_date TEXT,
+  reference_no TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS development_projects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_name TEXT NOT NULL,
+  sector TEXT,
+  description TEXT,
+  budget REAL,
+  funding_source TEXT,
+  status TEXT NOT NULL DEFAULT 'proposed',
+  start_date TEXT,
+  target_date TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS gad_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fiscal_year INTEGER,
+  program TEXT NOT NULL,
+  activity TEXT,
+  budget_amount REAL,
+  gad_amount REAL,
+  status TEXT NOT NULL DEFAULT 'planned',
+  accomplishment TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS disaster_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  record_type TEXT NOT NULL DEFAULT 'hazard',
+  title TEXT NOT NULL,
+  record_date TEXT,
+  location TEXT,
+  description TEXT,
+  status TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS institutions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  type TEXT,
+  head_name TEXT,
+  contact TEXT,
+  members_count INTEGER,
+  description TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;
 
 const MIGRATION_018 = `

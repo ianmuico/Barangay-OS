@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/page-header';
 import { getAPI } from '@/lib/ipc';
 import { toast } from 'sonner';
 import { invalidateCache } from '@/lib/cache';
+import { SoftwareUpdateCard } from '@/components/software-update-card';
 
 // ─── 6-Digit PIN Input ───────────────────────────────────────────────
 function PinInput({
@@ -253,6 +254,8 @@ export default function BackupRestorePage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Backup & Restore" description="Save your data to a flash drive or restore from a backup." />
+
+      <SoftwareUpdateCard />
 
       <Card>
         <CardHeader>
